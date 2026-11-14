@@ -74,7 +74,5 @@ def test_release_keeps_expressions_out_of_run_scripts() -> None:
 
 
 def test_release_notes_skip_version_bumps() -> None:
-    parsers = tomllib.loads((ROOT / "cliff.toml").read_text())["git"][
-        "commit_parsers"
-    ]
+    parsers = tomllib.loads((ROOT / "cliff.toml").read_text())["git"]["commit_parsers"]
     assert {"message": "^chore: bump version", "skip": True} in parsers
