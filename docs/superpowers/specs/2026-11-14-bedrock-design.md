@@ -59,6 +59,7 @@ continuum-github は、issue の 3 つの節（Summary、Why it matters、Risk i
   - 重大度ごとの要約: 失敗した重大度の要約を本文から除く。すべて失敗したら、要約の節そのものがオフのときと同じくなくなる。今の `_Summary unavailable this week._` は出さない。
   - HTML レポート: 書き直しの 1 回を含めて失敗したら、HTML の行を本文から除き、アーティファクトをアップロードしない。今の `unavailable this week` は出さない。
   - 失敗したことは、エラーコードと用途だけをログに出す（エージェントの判断の節）。
+  - フォールバックした issue の本文の末尾（詳細のブロックのあと、隠しマーカーの前）に注釈を付ける。issue の注釈は `FALLBACK_NOTE`、週次レポートの注釈は `Written without Bedrock this week: <items>.` の形で、`<items>` には書けなかった項目（`High summary` のような重大度ごとの要約と `Japanese visual report`）を並べる。オフのときは注釈を付けない。あとの sync が節を書けたら、本文を書き直すので注釈は消える。
 - オフからオンに切り替えたあとの sync は、節のない開いた issue に 3 つの節を書き足す。今の「書き漏れは後の実行で埋める」仕組みを、見出しのない本文にも広げる。オンからオフに切り替えても、書いた節は消さない。
 - アクションの入力 `bedrock-region` を足し、環境変数 `BEDROCK_REGION` で渡す。空なら `aws-region` を使う。Agent Space が US 以外のリージョンにある利用者は、`bedrock-region` を US のリージョンにするか、自分のリージョンで呼べるモデル ID（`eu.` や `apac.` の推論プロファイルなど）を `bedrock-model-id` に渡す。`docs/setup.md` にこの選び方を書く。
 - アクションから `kiro-api-key` 入力、Kiro CLI のインストール手順、`KIRO_API_KEY` の受け渡しを消す。`sync` アクションの `needs-sections` で節の書き込みを飛ばす仕組みは、オンのときのために残す。
@@ -69,6 +70,8 @@ continuum-github は、issue の 3 つの節（Summary、Why it matters、Risk i
 - 入力を消すので、利用者にとって破壊的な変更になる。`make release-minor` で `v0.2.0` を出し、リリースノートに入力の変更を書く。
 
 ## エージェントの判断
+
+- issue の注釈の文面は `_Bedrock could not write the Summary, Why it matters, and Risk if left unresolved sections, so this issue shows the scanner's details only. A later sync tries again._` にした。週次レポートの注釈は本文の最後の段落にし、本文を `MAX_BODY` に収める計算に含める。
 
 - docs で勧めるモデルは `us.anthropic.claude-sonnet-5-5` にした。US の推論プロファイルなので、処理は US のリージョンにとどまる。HTML のページソースを書けるだけの出力の長さがあり、Opus より安い。
 - `converse` の `maxTokens` は、節と要約では小さく、ページソースでは大きくする。正確な値はビルダーが決める。
