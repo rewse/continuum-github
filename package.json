@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "name": "continuum-report",
+  "dependencies": {
+    "visual-explainer": "0.15.0"
+  },
+  "overrides": {
+    "image-size": "2.0.4"
+  }
+}

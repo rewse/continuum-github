@@ -1,0 +1,36 @@
+owner = "example-org"
+
+[[repositories]]
+name = ".github"
+private = false
+
+[[repositories]]
+name = "actions"
+private = false
+
+[[repositories]]
+name = "api"
+private = true
+
+[[repositories]]
+name = "continuum"
+private = true
+
+[[repositories]]
+name = "web"
+private = false
+
+[[sites]]
+domain = "www.example.com"
+pentest = "weekly-www-example-com"
+repository = "web"
+
+[[sites]]
+domain = "api.example.com"
+pentest = "weekly-api-example-com"
+repository = "api"
+
+[[sites]]
+domain = "example.com"
+pentest = "weekly-example-com"
+repository = "web"

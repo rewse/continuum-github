@@ -1,0 +1,23 @@
+name: TruffleHog
+
+on:
+  schedule:
+    - cron: "51 19 * * 0"  # Every Monday at 04:51 JST (19:51 UTC Sun)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Secret Sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: rewse/actions/trufflehog@f336e87609e41dacccd0831db7f49a785e827d40  # v1.1.9
+        with:
+          extra-args: --results=verified,unknown

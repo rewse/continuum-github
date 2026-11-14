@@ -1,0 +1,41 @@
+[project]
+name = "continuum-github"
+version = "0.1.0"
+description = "Track AWS Continuum and Security Agent findings in GitHub issues and publish a weekly report."
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+dependencies = [
+    "boto3>=1.43.114",
+    "httpx>=0.28.1",
+]
+
+[project.scripts]
+continuum-scan = "continuum_scan.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+# The import package name differs from the project name.
+[tool.hatch.build.targets.wheel]
+packages = ["src/continuum_scan"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+single-line-exclusions = ["collections.abc", "typing"]
+
+[dependency-groups]
+dev = [
+    "cfn-lint>=1.57.2",
+    "pytest>=9.1.1",
+    "pyyaml>=6.0.3",
+]
+
+[tool.uv]
+exclude-newer = "4 days"
