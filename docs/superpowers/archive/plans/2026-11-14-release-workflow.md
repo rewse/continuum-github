@@ -8,7 +8,7 @@
 
 **Tech Stack:** bash、make、hatchling、uv、git-cliff、GitHub Actions、pytest
 
-**Spec:** `docs/superpowers/specs/2026-11-14-release-workflow-design.md`
+**Spec:** `docs/superpowers/archive/specs/2026-11-14-release-workflow-design.md`
 
 参照元（読むだけ）: `~/git/enecoq-data-fetcher` の `Makefile`、`scripts/bump_version.sh`、`tests/test_bump_version.py`、`cliff.toml`、`.github/workflows/release.yml`。`~/git/actions/.github/workflows/release.yml`。
 
