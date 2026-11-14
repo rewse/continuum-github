@@ -200,7 +200,7 @@ The parameter reaches cursor.execute without passing through an allowlist...
 <!-- continuum-state: {"finding_ids":["0f3c9a6e-..."],...} -->
 ```
 
-Without a model, the body has the table, the details, and the state marker, and none of the three sections:
+Without a model, the body has the same table, details, and state marker, and none of the three sections:
 
 ```markdown
 | Field | Value |
@@ -214,6 +214,10 @@ Without a model, the body has the table, the details, and the state marker, and 
 ### Description
 
 The handler builds the ORDER BY clause by concatenating the sort parameter...
+
+### Reasoning
+
+The parameter reaches cursor.execute without passing through an allowlist...
 
 </details>
 
