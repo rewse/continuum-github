@@ -11,6 +11,7 @@ from pathlib import Path
 
 from continuum_scan.bedrock import ModelLike
 from continuum_scan.bedrock import visual_report_source
+from continuum_scan.config import DEFAULT_LANGUAGE
 from continuum_scan.models import Severity
 from continuum_scan.models import TargetScan
 from continuum_scan.records import BOT
@@ -25,7 +26,7 @@ WEEKLY_LABEL = "weekly-report"
 MAX_BODY = 65000
 
 CONTINUED = "Continued in the comments below."
-HTML_PART = "Japanese visual report"
+HTML_PART = "Visual report"
 _HTML_LINE = f"\n\n{HTML_PART}: {HTML_URL_PLACEHOLDER}"
 
 _REPORTED = (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM)
@@ -39,6 +40,10 @@ _DETAILS_CLOSE = "</details>"
 _OPEN_LABEL = "Open findings"
 _CLOSED_LABEL = "Closed this week"
 _LINK_RE = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r"<(?P<name>html)\b(?P<attributes>[^>]*)>", re.IGNORECASE)
+_LANG_ATTR_RE = re.compile(
+    r"""\s+lang\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.IGNORECASE
+)
 _EXTERNAL_FONT_HOSTS = ("fonts.googleapis.com", "fonts.gstatic.com")
 _UNSTYLED_SVG_TEXT_RULE = (
     "<style>:where(svg text:not([class]):not([fill])) { fill: var(--text); }</style>"
@@ -546,36 +551,50 @@ def _render(
     return None
 
 
+def set_html_lang(html: str, language: str) -> str:
+    """Sets the lang attribute of the first <html> tag to the locale language.
+
+    ja_JP becomes ja-JP. An existing lang attribute is replaced, and a page
+    without an <html> tag is returned unchanged.
+    """
+    match = _HTML_TAG_RE.search(html)
+    if match is None:
+        return html
+    attributes = _LANG_ATTR_RE.sub("", match.group("attributes"))
+    tag = f'<{match.group("name")} lang="{language.replace("_", "-")}"{attributes}>'
+    return html[: match.start()] + tag + html[match.end() :]
+
+
 def build_visual_report(
     model: ModelLike,
     data: WeeklyData,
     skill_dir: Path,
     out: Path,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    language: str = DEFAULT_LANGUAGE,
 ) -> bool:
-    """Writes the Japanese visual report to out and returns whether it did.
+    """Writes the visual report to out and returns whether it did.
 
-    The model writes a page source that visual-explainer renders. When rendering
-    fails, the model rewrites the source once with the render errors. Leaves no
-    file at out when no page renders, including one left by an earlier run.
-    The render output is never printed, because it can repeat finding details.
+    The model writes a page source in the language of the locale language,
+    and visual-explainer renders it. When rendering fails, the model
+    rewrites the source once with the render errors. Leaves no file at out
+    when no page renders, including one left by an earlier run. The render
+    output is never printed, because it can repeat finding details.
     """
     out.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="continuum-report-") as work:
         src = Path(work) / "report.src.html"
         errors: str | None = None
         for _ in range(2):
-            source = visual_report_source(model, data, skill_dir, errors)
+            source = visual_report_source(model, data, skill_dir, errors, language)
             if source is None:
                 break
             src.write_text(source, encoding="utf-8")
             errors = _render(runner, skill_dir, src, out)
             if errors is None:
                 html = out.read_text(encoding="utf-8")
-                out.write_text(
-                    color_unstyled_svg_text(strip_external_fonts(html)),
-                    encoding="utf-8",
-                )
+                html = color_unstyled_svg_text(strip_external_fonts(html))
+                out.write_text(set_html_lang(html, language), encoding="utf-8")
                 return True
     out.unlink(missing_ok=True)
     return False

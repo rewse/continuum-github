@@ -12,6 +12,7 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError
 from botocore.exceptions import ClientError
 
+from continuum_scan.config import DEFAULT_LANGUAGE
 from continuum_scan.models import Detection
 from continuum_scan.models import Severity
 from continuum_scan.render import Sections
@@ -153,7 +154,11 @@ class Bedrock:
         return answer
 
 
-def _sections_prompt(detection: Detection) -> str:
+def _in_language(language: str) -> str:
+    return f"in the language of the locale {language}"
+
+
+def _sections_prompt(detection: Detection, language: str) -> str:
     lines = [
         "Write three short sections for a GitHub issue about this security finding.",
         "",
@@ -173,21 +178,24 @@ def _sections_prompt(detection: Detection) -> str:
             "risk: what can happen if it is left unresolved."
         ),
         (
-            "Write each value in English, in 1 to 3 sentences "
+            f"Write each value {_in_language(language)}, in 1 to 3 sentences "
             f"and at most {MAX_SECTION} characters."
         ),
     ]
     return "\n".join(lines)
 
 
-def finding_sections(model: ModelLike, detection: Detection) -> Sections | None:
+def finding_sections(
+    model: ModelLike, detection: Detection, language: str = DEFAULT_LANGUAGE
+) -> Sections | None:
     """Asks the model for the summary sections of a finding issue.
 
+    The sections are written in the language of the locale language.
     Returns None when the answer is missing, not a JSON object, or has a
     value that is missing, empty, or longer than 1,500 characters. An
     answer that arrives but fails these checks is logged as invalid.
     """
-    answer = model.ask(_sections_prompt(detection), "sections")
+    answer = model.ask(_sections_prompt(detection, language), "sections")
     if answer is None:
         return None
     sections = _parse_sections(answer)
@@ -219,7 +227,7 @@ def _parse_sections(answer: str) -> Sections | None:
     return Sections(*values)
 
 
-def _summary_prompt(severity: Severity, data: "WeeklyData") -> str:
+def _summary_prompt(severity: Severity, data: "WeeklyData", language: str) -> str:
     lines = [
         (
             f"Summarize the open {severity.lower()} severity security findings "
@@ -235,22 +243,25 @@ def _summary_prompt(severity: Severity, data: "WeeklyData") -> str:
     lines += [
         "",
         (
-            f"Reply with 2 to 4 sentences in English between {BEGIN} and {END}, "
-            f"at most {MAX_SECTION} characters."
+            f"Reply with 2 to 4 sentences {_in_language(language)} "
+            f"between {BEGIN} and {END}, at most {MAX_SECTION} characters."
         ),
     ]
     return "\n".join(lines)
 
 
-def severity_summaries(model: ModelLike, data: "WeeklyData") -> dict[Severity, str]:
+def severity_summaries(
+    model: ModelLike, data: "WeeklyData", language: str = DEFAULT_LANGUAGE
+) -> dict[Severity, str]:
     """Asks the model for a short summary of the open findings of each severity.
 
+    The summaries are written in the language of the locale language.
     Severities without open findings are not asked about. Answers that are
     missing, empty, or longer than 1,500 characters are left out.
     """
     summaries = {}
     for severity in dict.fromkeys(item.severity for item in data.open_items):
-        answer = model.ask(_summary_prompt(severity, data), "summary")
+        answer = model.ask(_summary_prompt(severity, data, language), "summary")
         if answer is None:
             continue
         answer = answer.strip()
@@ -270,12 +281,13 @@ _SKILL_RESOURCES = (
 )
 
 
-def _visual_prompt(data: "WeeklyData", errors: str | None) -> str:
+def _visual_prompt(data: "WeeklyData", errors: str | None, language: str) -> str:
     lines = [
         (
-            "Write a visual-explainer page source (.src.html) in Japanese for "
-            f"the weekly security report titled {data.title!r}, following the "
-            "visual-explainer skill in your resources."
+            "Write a visual-explainer page source (.src.html) "
+            f"{_in_language(language)} for the weekly security report titled "
+            f"{data.title!r}, following the visual-explainer skill in your "
+            "resources."
         ),
         "",
         "## Counts (open, new this week, closed this week)",
@@ -310,11 +322,11 @@ def _visual_prompt(data: "WeeklyData", errors: str | None) -> str:
         (
             f"Reply with one complete page source between {BEGIN} and {END}. "
             f"Its head must contain {KIT_LINK} and no other stylesheet or script. "
-            "Load nothing else from outside the page, write all prose in "
-            "Japanese, and keep every table and figure readable without "
-            "JavaScript. Give every SVG text element a class from the kit, "
-            "such as ve-axis-t or ve-el, so it stays readable on both the "
-            "light and the dark theme."
+            "Load nothing else from outside the page, write all prose "
+            f"{_in_language(language)}, and keep every table and figure "
+            "readable without JavaScript. Give every SVG text element a class "
+            "from the kit, such as ve-axis-t or ve-el, so it stays readable on "
+            "both the light and the dark theme."
         ),
     ]
     if errors:
@@ -328,15 +340,20 @@ def _visual_prompt(data: "WeeklyData", errors: str | None) -> str:
 
 
 def visual_report_source(
-    model: ModelLike, data: "WeeklyData", skill_dir: Path, errors: str | None = None
+    model: ModelLike,
+    data: "WeeklyData",
+    skill_dir: Path,
+    errors: str | None = None,
+    language: str = DEFAULT_LANGUAGE,
 ) -> str | None:
-    """Asks the model for the page source of the Japanese visual report.
+    """Asks the model for the page source of the visual report.
 
-    The skill files that exist under skill_dir are read on every call and
-    put in front of the prompt.
+    The page is written in the language of the locale language. The skill
+    files that exist under skill_dir are read on every call and put in
+    front of the prompt.
     errors, when given, are the rendering errors of the previous source.
     """
     resources = [
         skill_dir / name for name in _SKILL_RESOURCES if (skill_dir / name).is_file()
     ]
-    return model.ask(_visual_prompt(data, errors), "page", resources)
+    return model.ask(_visual_prompt(data, errors, language), "page", resources)

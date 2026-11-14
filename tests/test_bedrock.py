@@ -174,3 +174,11 @@ def test_finding_sections_prompt_carries_the_detection() -> None:
         assert text in prompt
     assert "The q parameter is echoed." in prompt
     assert model.purposes == ["sections"]
+
+
+def test_finding_sections_prompt_names_the_locale() -> None:
+    model = FakeModel(None)
+    finding_sections(model, DETECTION, "ja_JP")
+    (prompt,) = model.prompts
+    assert "in the language of the locale ja_JP" in prompt
+    assert "English" not in prompt

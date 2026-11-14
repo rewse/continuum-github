@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_REGION = "us-east-1"
+DEFAULT_LANGUAGE = "en_US"
+# The language goes into model prompts, so only a bare locale is accepted.
+LANGUAGE_RE = re.compile(r"[a-z]{2,3}(_[A-Z]{2})?")
 DEFAULT_VISUAL_EXPLAINER_DIR = Path(
     "node_modules/visual-explainer/plugins/visual-explainer"
 )
@@ -51,6 +54,19 @@ class Settings:
     bedrock_region: str
     mention: str
     visual_explainer_dir: Path
+    language: str = DEFAULT_LANGUAGE
+
+
+def _language(env: Mapping[str, str]) -> str:
+    """Returns CONTINUUM_LANGUAGE, or the default when it is unset or empty.
+
+    Raises:
+        ValueError: the value is not a locale such as ja or ja_JP.
+    """
+    value = env.get("CONTINUUM_LANGUAGE") or DEFAULT_LANGUAGE
+    if not LANGUAGE_RE.fullmatch(value):
+        raise ValueError("CONTINUUM_LANGUAGE must be a locale such as ja_JP")
+    return value
 
 
 def _repository(entry: Mapping[str, object]) -> Repository:
@@ -105,6 +121,7 @@ def load_settings(env: Mapping[str, str]) -> Settings:
             if visual_explainer_dir
             else DEFAULT_VISUAL_EXPLAINER_DIR
         ),
+        language=_language(env),
     )
 
 

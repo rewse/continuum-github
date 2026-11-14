@@ -28,6 +28,7 @@ from continuum_scan.report import build_weekly
 from continuum_scan.report import color_unstyled_svg_text
 from continuum_scan.report import publish_weekly
 from continuum_scan.report import render_weekly
+from continuum_scan.report import set_html_lang
 from continuum_scan.report import strip_external_fonts
 from continuum_scan.report import unavailable_parts
 from continuum_scan.report import weekly_title
@@ -193,7 +194,7 @@ def test_render_weekly_orders_sections_and_hides_empty_ones() -> None:
     ) < body.index("## High")
     assert "Two XSS." in body and "## Medium" not in body
     assert "## Incomplete scans" not in body
-    assert "Japanese visual report: {{CONTINUUM_HTML_URL}}" in body
+    assert "Visual report: {{CONTINUUM_HTML_URL}}" in body
     assert "- #1 [new] [high] [pentest] ansible-playbooks: t1" in body
 
 
@@ -210,11 +211,9 @@ def test_render_weekly_leaves_out_missing_summaries() -> None:
 
 
 def test_render_weekly_ends_with_the_fallback_note() -> None:
-    body, _ = render_weekly(
-        TWO_SEVERITIES, {}, ["High summary", "Japanese visual report"]
-    )
+    body, _ = render_weekly(TWO_SEVERITIES, {}, ["High summary", "Visual report"])
     assert body.rstrip().endswith(
-        "_Written without Bedrock this week: High summary, Japanese visual report._"
+        "_Written without Bedrock this week: High summary, Visual report._"
     )
 
 
@@ -232,7 +231,7 @@ def test_render_weekly_keeps_the_note_last_when_lists_overflow() -> None:
 def test_unavailable_parts_lists_missing_summaries_and_html() -> None:
     assert unavailable_parts(TWO_SEVERITIES, {Severity.MEDIUM: "s"}, html=False) == [
         "High summary",
-        "Japanese visual report",
+        "Visual report",
     ]
     both = {Severity.HIGH: "s", Severity.MEDIUM: "s"}
     assert unavailable_parts(TWO_SEVERITIES, both, html=True) == []
@@ -244,7 +243,7 @@ def test_publish_weekly_with_html_links_it() -> None:
     body, comments = render_weekly(TWO_SEVERITIES, {})
     publish_weekly(github, "Continuum weekly report 2026-W46", body, comments, url)
     (posted,) = github.bodies.values()
-    assert f"Japanese visual report: {url}" in posted
+    assert f"Visual report: {url}" in posted
 
 
 def test_publish_weekly_without_html_removes_the_line() -> None:
@@ -252,7 +251,7 @@ def test_publish_weekly_without_html_removes_the_line() -> None:
     body, comments = render_weekly(TWO_SEVERITIES, {})
     publish_weekly(github, "Continuum weekly report 2026-W46", body, comments, None)
     (posted,) = github.bodies.values()
-    assert "Japanese visual report" not in posted
+    assert "Visual report" not in posted
     assert "{{CONTINUUM_HTML_URL}}" not in posted
 
 
@@ -286,7 +285,7 @@ def test_publish_weekly_updates_same_week_and_closes_older() -> None:
     result = publish_weekly(
         github,
         "Continuum weekly report 2026-W46",
-        "head\n\nJapanese visual report: {{CONTINUUM_HTML_URL}}\n\nlists\n",
+        "head\n\nVisual report: {{CONTINUUM_HTML_URL}}\n\nlists\n",
         [],
         None,
     )
@@ -491,6 +490,7 @@ def test_cli_report_build_writes_files_and_prints_counts(
     monkeypatch.setenv("GITHUB_TOKEN", "t")
     monkeypatch.setenv("REPORT_REPOSITORY", "example-org/security-findings")
     monkeypatch.setenv("BEDROCK_MODEL_ID", "m1")
+    monkeypatch.setenv("CONTINUUM_LANGUAGE", "ja_JP")
     records = [
         _rec(1, "severity:high", created=NOW - timedelta(days=2)),
         _rec(
@@ -509,8 +509,8 @@ def test_cli_report_build_writes_files_and_prints_counts(
     )
     visual = []
 
-    def fake_visual(model, data_, skill_dir, out_):
-        visual.append((data_, skill_dir, out_))
+    def fake_visual(model, data_, skill_dir, out_, language):
+        visual.append((data_, skill_dir, out_, language))
         return True
 
     monkeypatch.setattr(cli, "build_visual_report", fake_visual)
@@ -521,7 +521,7 @@ def test_cli_report_build_writes_files_and_prints_counts(
         == 0
     )
     assert capsys.readouterr().out == "open=1 new=1 closed=1 incomplete=1 html=1\n"
-    assert visual == [(data, Path("/ve"), out / "report.ja.html")]
+    assert visual == [(data, Path("/ve"), out / "report.html", "ja_JP")]
     body = (out / "body.md").read_text()
     assert (body, []) == render_weekly(data, {Severity.HIGH: "High summary."})
     assert "Written without Bedrock" not in body
@@ -560,7 +560,7 @@ def test_cli_report_build_counts_a_missing_visual_report(
     monkeypatch.setattr(
         cli, "_build_report", lambda settings, targets, model: (DATA, {})
     )
-    monkeypatch.setattr(cli, "build_visual_report", lambda *args: False)
+    monkeypatch.setattr(cli, "build_visual_report", lambda *args, **kwargs: False)
     assert (
         cli.main(
             ["report", "build", "--targets", str(TARGETS_PATH), "--out", str(tmp_path)]
@@ -574,7 +574,7 @@ def test_cli_report_build_counts_a_missing_visual_report(
         .rstrip()
         .endswith(
             "_Written without Bedrock this week: High summary, Medium summary, "
-            "Japanese visual report._"
+            "Visual report._"
         )
     )
 
@@ -605,12 +605,12 @@ def test_cli_report_build_without_a_model_skips_summaries_and_html(
     monkeypatch.setattr(cli, "collect_scans", lambda *args: [])
     out = tmp_path / "out"
     (out).mkdir()
-    (out / "report.ja.html").write_text("stale")
+    (out / "report.html").write_text("stale")
     assert (
         cli.main(["report", "build", "--targets", str(TARGETS_PATH), "--out", str(out)])
         == 0
     )
-    assert not (out / "report.ja.html").exists()
+    assert not (out / "report.html").exists()
     body = (out / "body.md").read_text()
     assert "## High\n\n" not in body
     assert "Written without Bedrock" not in body
@@ -642,7 +642,7 @@ def test_build_visual_report_retries_once_with_render_errors(tmp_path) -> None:
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
     model = RecordingModel(["<html>1</html>", "<html>2</html>"])
-    out = tmp_path / "report.ja.html"
+    out = tmp_path / "report.html"
     assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is True
     assert out.read_text() == "<p>ok</p>"
     assert "line 3 <ve-bar>: bad" in model.prompts[1]
@@ -653,7 +653,7 @@ def test_build_visual_report_retries_once_with_render_errors(tmp_path) -> None:
 
 
 def test_build_visual_report_gives_up_without_writing(tmp_path) -> None:
-    out = tmp_path / "report.ja.html"
+    out = tmp_path / "report.html"
     always_fail = lambda args, **kw: subprocess.CompletedProcess(
         args, 1, stdout="", stderr="e"
     )
@@ -683,7 +683,7 @@ def test_build_visual_report_writes_the_source_and_removes_partial_output(
         Path(args[args.index("-o") + 1]).write_text("partial")
         return subprocess.CompletedProcess(args, 1, stdout="", stderr="e")
 
-    out = tmp_path / "report.ja.html"
+    out = tmp_path / "report.html"
     model = RecordingModel(["<p>1</p>", "<p>2</p>"])
     assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is False
     assert sources == ["<p>1</p>", "<p>2</p>"]
@@ -691,7 +691,7 @@ def test_build_visual_report_writes_the_source_and_removes_partial_output(
 
 
 def test_build_visual_report_ignores_a_stale_output_file(tmp_path) -> None:
-    out = tmp_path / "report.ja.html"
+    out = tmp_path / "report.html"
     out.write_text("stale")
     no_output = lambda args, **kw: subprocess.CompletedProcess(
         args, 0, stdout="", stderr=""
@@ -707,7 +707,7 @@ def test_build_visual_report_keeps_the_last_render_errors(tmp_path) -> None:
         args, 1, stdout="", stderr=stderr
     )
     model = RecordingModel(["a", "b"])
-    out = tmp_path / "report.ja.html"
+    out = tmp_path / "report.html"
     assert build_visual_report(model, DATA, SKILL_DIR, out, runner=long_fail) is False
     assert "y" * 8000 in model.prompts[1]
     assert "xy" not in model.prompts[1]
@@ -717,7 +717,7 @@ def test_build_visual_report_fails_when_node_cannot_run(tmp_path) -> None:
     def runner(args, **kwargs):
         raise subprocess.TimeoutExpired(args, 300)
 
-    out = tmp_path / "report.ja.html"
+    out = tmp_path / "report.html"
     model = RecordingModel(["a", "b"])
     assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is False
     assert not out.exists()
@@ -729,7 +729,7 @@ def test_visual_report_source_passes_skill_files_and_data() -> None:
     assert model.resources[0] == [SKILL_DIR / name for name in _SKILL_FILES]
     assert model.purposes == ["page"]
     prompt = model.prompts[0]
-    assert "Japanese" in prompt
+    assert "in the language of the locale en_US" in prompt
     assert '<link rel="stylesheet" href="kit.css" data-ve-kit>' in prompt
     for text in ("#7", "high", "pentest", "ansible-playbooks", "SQL injection", "sum7"):
         assert text in prompt
@@ -765,7 +765,7 @@ def test_build_visual_report_colors_unstyled_svg_text(tmp_path) -> None:
         Path(args[args.index("-o") + 1]).write_text("<head></head><svg></svg>")
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
-    out = tmp_path / "report.ja.html"
+    out = tmp_path / "report.html"
     model = RecordingModel(["<html>1</html>"])
     assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is True
     assert "fill: var(--text)" in out.read_text()
@@ -789,3 +789,51 @@ def test_withdrawn_issue_without_a_severity_label_counts_its_recorded_severity()
     assert data.counts[Severity.HIGH] == (0, 1, 1)
     assert data.counts[Severity.MEDIUM] == (0, 0, 0)
     assert [item.severity for item in data.closed_items] == [Severity.HIGH]
+
+
+def test_severity_summaries_prompt_names_the_locale() -> None:
+    model = FakeModel("s")
+    data = build_weekly([_rec(1, "severity:high")], [], NOW)
+    severity_summaries(model, data, "ja_JP")
+    assert "in the language of the locale ja_JP" in model.prompts[0]
+    assert "English" not in model.prompts[0]
+
+
+def test_visual_report_source_names_the_locale() -> None:
+    model = RecordingModel(["<html>page</html>"])
+    visual_report_source(model, DATA, SKILL_DIR, language="ja_JP")
+    prompt = model.prompts[0]
+    assert "in the language of the locale ja_JP" in prompt
+    assert "Japanese" not in prompt
+
+
+def test_set_html_lang_adds_or_replaces_the_attribute() -> None:
+    assert set_html_lang("<html><head></head></html>", "ja_JP") == (
+        '<html lang="ja-JP"><head></head></html>'
+    )
+    assert set_html_lang('<html lang="en" class="x"><body></body></html>', "en") == (
+        '<html lang="en" class="x"><body></body></html>'
+    )
+    assert set_html_lang('<HTML LANG="en"><body></body></HTML>', "ja_JP") == (
+        '<HTML lang="ja-JP"><body></body></HTML>'
+    )
+    assert set_html_lang("<p>broken</p>", "ja_JP") == "<p>broken</p>"
+
+
+def test_build_visual_report_sets_the_page_language(tmp_path) -> None:
+    def runner(args, **kwargs):
+        Path(args[args.index("-o") + 1]).write_text(
+            "<html><head></head><body></body></html>"
+        )
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    out = tmp_path / "report.html"
+    model = RecordingModel(["<html>1</html>"])
+    assert build_visual_report(
+        model, DATA, SKILL_DIR, out, runner=runner, language="ja_JP"
+    )
+    assert '<html lang="ja-JP">' in out.read_text()
+
+
+def test_unavailable_parts_names_the_visual_report() -> None:
+    assert unavailable_parts(TWO_SEVERITIES, {}, html=False)[-1] == "Visual report"

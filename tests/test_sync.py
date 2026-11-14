@@ -757,3 +757,20 @@ def test_run_sync_adds_the_site_label_to_existing_issues() -> None:
     run_sync(TARGETS, github, FakePentest(scans={}), FakeCodeVuln(), FakeCodeReview())
     assert github.labels == {1: ["new", "site:x.example.com"]}
     assert github.updates == [] and github.comments == []
+
+
+def test_fill_sections_passes_the_language() -> None:
+    github = FakeGitHub(issues=[_issue_item(1, keys=("k1",))])
+    pentest = FakePentest(scans={}, detections={"f1": _det("k1")})
+    model = FakeModel(None)
+    fill_sections(
+        TARGETS,
+        github,
+        pentest,
+        FakeCodeVuln(),
+        FakeCodeReview(),
+        model,
+        language="ja_JP",
+    )
+    (prompt,) = model.prompts
+    assert "in the language of the locale ja_JP" in prompt

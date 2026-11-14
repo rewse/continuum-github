@@ -151,7 +151,7 @@ def test_report_uploads_an_unzipped_html_artifact() -> None:
     upload = _step("report", "Upload HTML report")
     assert upload["id"] == "upload"
     assert upload["with"] == {
-        "path": "${{ runner.temp }}/report/report.ja.html",
+        "path": "${{ runner.temp }}/report/report.html",
         "archive": False,
         "retention-days": 400,
         "if-no-files-found": "warn",

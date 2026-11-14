@@ -120,7 +120,14 @@ def _sections(settings: Settings, targets: Targets) -> int:
         return 0
     with _clients(settings) as (github, pentest, code_vuln, code_review):
         return fill_sections(
-            targets, github, pentest, code_vuln, code_review, model, settings.mention
+            targets,
+            github,
+            pentest,
+            code_vuln,
+            code_review,
+            model,
+            settings.mention,
+            settings.language,
         )
 
 
@@ -132,7 +139,9 @@ def _build_report(
         records = records_from_issues(github.issues())
         scans = collect_scans(targets, pentest, code_vuln, code_review)
     data = build_weekly(records, scans, datetime.now(UTC))
-    summaries = {} if model is None else severity_summaries(model, data)
+    summaries = (
+        {} if model is None else severity_summaries(model, data, settings.language)
+    )
     return data, summaries
 
 
@@ -153,12 +162,16 @@ def _report_build(settings: Settings, targets: Targets, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     if model is None:
         # A file left by an earlier run must not be uploaded.
-        (out / "report.ja.html").unlink(missing_ok=True)
+        (out / "report.html").unlink(missing_ok=True)
         html = False
         unavailable: list[str] = []
     else:
         html = build_visual_report(
-            model, data, settings.visual_explainer_dir, out / "report.ja.html"
+            model,
+            data,
+            settings.visual_explainer_dir,
+            out / "report.html",
+            language=settings.language,
         )
         unavailable = unavailable_parts(data, summaries, html)
     body, comments = render_weekly(data, summaries, unavailable)

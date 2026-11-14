@@ -13,6 +13,7 @@ from botocore.exceptions import ClientError
 from continuum_scan.bedrock import ModelLike
 from continuum_scan.bedrock import finding_sections
 from continuum_scan.codereview import StartResult
+from continuum_scan.config import DEFAULT_LANGUAGE
 from continuum_scan.config import Repository
 from continuum_scan.config import Site
 from continuum_scan.config import Targets
@@ -438,9 +439,11 @@ def fill_sections(
     code_review: CodeReviewLike,
     model: ModelLike,
     mention: str = "",
+    language: str = DEFAULT_LANGUAGE,
 ) -> int:
     """Has the model write the summary sections of open issues that lack them.
 
+    The sections are written in the language of the locale language.
     The rewritten body of an urgent issue starts with mention unless it is
     empty. Issues whose detection cannot be read are left for a later run.
     An issue for which the model gives no valid answer gets FALLBACK_NOTE
@@ -465,7 +468,7 @@ def fill_sections(
         )
         if detection is None:
             continue
-        sections = finding_sections(model, detection)
+        sections = finding_sections(model, detection, language)
         if sections is None:
             # Marks the issue once; a later run retries the sections.
             if FALLBACK_NOTE not in record.body:
