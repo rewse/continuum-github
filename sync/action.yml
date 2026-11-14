@@ -17,6 +17,9 @@ inputs:
   github-token:
     description: Token that reads and writes issues in the report repository. Keep the default; the actions read state only from issues that github-actions[bot] opened in the calling repository, so another token makes sync file every finding again.
     default: ${{ github.token }}
+  language:
+    description: Locale, such as ja_JP or en_US, of the text the model writes. Empty uses en_US.
+    default: en_US
   mention:
     description: Mention added to urgent findings, such as a GitHub handle. Empty adds none.
     default: ""
@@ -64,6 +67,7 @@ runs:
         AWS_REGION: ${{ inputs.aws-region }}
         BEDROCK_MODEL_ID: ${{ inputs.bedrock-model-id }}
         BEDROCK_REGION: ${{ inputs.bedrock-region }}
+        CONTINUUM_LANGUAGE: ${{ inputs.language }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         MENTION: ${{ inputs.mention }}
         REPORT_REPOSITORY: ${{ inputs.report-repository }}

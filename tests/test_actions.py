@@ -44,6 +44,8 @@ def test_actions_declare_the_shared_inputs() -> None:
         assert inputs["bedrock-model-id"]["default"] == ""
         assert inputs["bedrock-region"]["default"] == ""
         assert "kiro" not in _path(name).read_text().lower()
+        assert inputs["language"]["default"] == "en_US"
+        assert "japanese" not in _path(name).read_text().lower()
 
 
 def test_actions_are_composite_and_pin_every_use() -> None:
@@ -159,3 +161,13 @@ def test_report_uploads_an_unzipped_html_artifact() -> None:
     publish = _step("report", "Publish report")
     assert '--dir "$RUNNER_TEMP/report" --html-url "$HTML_URL"' in publish["run"]
     assert publish["env"]["HTML_URL"] == "${{ steps.upload.outputs.artifact-url }}"
+
+
+def test_actions_pass_the_language_only_to_model_steps() -> None:
+    language = "${{ inputs.language }}"
+    assert (
+        _step("sync", "Write issue sections")["env"]["CONTINUUM_LANGUAGE"] == language
+    )
+    assert "CONTINUUM_LANGUAGE" not in _step("sync", "Sync findings")["env"]
+    assert _step("report", "Build report")["env"]["CONTINUUM_LANGUAGE"] == language
+    assert "CONTINUUM_LANGUAGE" not in _step("report", "Publish report")["env"]

@@ -175,6 +175,14 @@ If you upgrade from v0.1, the actions no longer take the `kiro-api-key` input. R
 gh secret delete KIRO_API_KEY --repo example-org/security-findings
 ```
 
+If you upgrade from v0.2 or earlier, the model now writes in `en_US` unless you choose a language, and the visual report file is `report.html` instead of `report.ja.html`. To keep the visual report in Japanese, pass `language: ${{ vars.LANGUAGE }}` to both actions, as the example workflows do, and set the variable:
+
+```sh
+gh variable set LANGUAGE --repo example-org/security-findings --body ja_JP
+```
+
+The issue sections and the severity summaries then switch to Japanese as well.
+
 ## 10. Add the workflows
 
 Copy [examples/workflows/sync.yml](../examples/workflows/sync.yml) and [examples/workflows/report.yml](../examples/workflows/report.yml) to `.github/workflows/` in your report repository. They reference the actions with a placeholder SHA of zeros and the comment `# vX.Y.Z`. Replace both with the commit SHA and version of the release you use:
@@ -196,7 +204,7 @@ Both are safe to rerun. They share a concurrency group, so a run waits until the
 
 ## 11. Turn on the model (optional)
 
-Without a model, the issues and the weekly report hold only what the scans returned. To have a Bedrock model add sections to each issue, summarize each severity in the report, and write the Japanese visual report:
+Without a model, the issues and the weekly report hold only what the scans returned. To have a Bedrock model add sections to each issue, summarize each severity in the report, and write the visual report:
 
 1. Make the model available in your account. For an Anthropic model, submit the use case form once per account, then have an administrator invoke the model once in the Bedrock console. That first call enables the model for the account, so the GitHub Actions role needs no `aws-marketplace` permissions.
 2. Make sure the GitHub Actions role allows `bedrock:InvokeModel`, as the role in [examples/infra/github-actions-role.yaml](../examples/infra/github-actions-role.yaml) does.
@@ -206,7 +214,13 @@ Without a model, the issues and the weekly report hold only what the scans retur
    gh variable set BEDROCK_MODEL_ID --repo example-org/security-findings --body us.anthropic.claude-sonnet-5-5
    ```
 
-The example workflows pass `BEDROCK_MODEL_ID` to the actions. `us.anthropic.claude-sonnet-5-5` is the recommended model. The page source of the visual report needs a long output, so a model with a small output limit fails on it. A `us.` inference profile runs only in US Regions, so if the Agent Space is outside the US, either set the `bedrock-region` input to a US Region or pass an inference profile ID for your Region. The next sync adds the sections to open issues that lack them.
+4. Optionally, choose the language the model writes in. The default is `en_US`:
+
+   ```sh
+   gh variable set LANGUAGE --repo example-org/security-findings --body ja_JP
+   ```
+
+The example workflows pass `BEDROCK_MODEL_ID` and `LANGUAGE` to the actions. The value of `LANGUAGE` is a locale such as `ja`, `ja_JP`, or `zh_TW`; any other form fails the job before the model is called. `us.anthropic.claude-sonnet-5-5` is the recommended model. The page source of the visual report needs a long output, so a model with a small output limit fails on it. A `us.` inference profile runs only in US Regions, so if the Agent Space is outside the US, either set the `bedrock-region` input to a US Region or pass an inference profile ID for your Region. The next sync adds the sections to open issues that lack them.
 
 When a model call fails after its retries, the job log shows a line such as `model_failed purpose=page reason=ValidationException`, with the error code and nothing from the findings. The issue or the report then ends with a note that names the part the model could not write.
 

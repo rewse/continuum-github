@@ -1,6 +1,6 @@
 # continuum-github
 
-continuum-github tracks the findings of AWS Continuum and AWS Security Agent as GitHub issues and posts a weekly report. Two composite actions run from workflows in a private repository that you own. The `sync` action reads the scan results, files each finding of Medium severity or higher as an issue, and keeps the issues up to date. The `report` action posts a weekly summary issue and uploads a Japanese visual report as a workflow artifact.
+continuum-github tracks the findings of AWS Continuum and AWS Security Agent as GitHub issues and posts a weekly report. Two composite actions run from workflows in a private repository that you own. The `sync` action reads the scan results, files each finding of Medium severity or higher as an issue, and keeps the issues up to date. The `report` action posts a weekly summary issue and uploads a visual report as a workflow artifact.
 
 This is an unofficial tool. It is not affiliated with or endorsed by Amazon Web Services.
 
@@ -29,7 +29,7 @@ Both look for vulnerabilities in a repository's source code and try to exploit w
 - An AWS account with AWS Security Agent and AWS Continuum, an Agent Space connected to your repositories through the Security Agent GitHub App, and the code reviews, code-vuln environments, and pentests you want. [examples/infra/](examples/infra/) has CloudFormation templates to start from.
 - An IAM role that GitHub Actions can assume through OIDC, such as the one in [examples/infra/github-actions-role.yaml](examples/infra/github-actions-role.yaml).
 - A private GitHub repository to hold the issues and run the workflows.
-- Optionally, access to a model in Amazon Bedrock. With a model, the actions add a summary and two short explanations to each issue, summarize each severity in the weekly report, and write a Japanese visual report. Without one, the issues and the report hold only what the scans returned.
+- Optionally, access to a model in Amazon Bedrock. With a model, the actions add a summary and two short explanations to each issue, summarize each severity in the weekly report, and write a visual report, all in the language that the `language` input names. Without one, the issues and the report hold only what the scans returned.
 
 [docs/setup.md](docs/setup.md) walks through the setup.
 
@@ -73,6 +73,7 @@ jobs:
         with:
           agent-space-id: ${{ vars.AGENT_SPACE_ID }}
           bedrock-model-id: ${{ vars.BEDROCK_MODEL_ID }}
+          language: ${{ vars.LANGUAGE }}
 ```
 
 Add a second workflow that calls the `report` action once a week:
@@ -114,6 +115,7 @@ jobs:
         with:
           agent-space-id: ${{ vars.AGENT_SPACE_ID }}
           bedrock-model-id: ${{ vars.BEDROCK_MODEL_ID }}
+          language: ${{ vars.LANGUAGE }}
       - name: Link the HTML report
         env:
           HTML_URL: ${{ steps.report.outputs.html-url }}
@@ -131,6 +133,7 @@ Both actions accept these inputs:
 | `bedrock-model-id` | empty | Bedrock model or inference profile ID, such as `us.anthropic.claude-sonnet-5-5`; empty turns the model off |
 | `bedrock-region` | empty | Region that Bedrock is called in; empty uses `aws-region` |
 | `github-token` | `${{ github.token }}` | Token that reads and writes issues in the report repository; keep the default (see below) |
+| `language` | `en_US` | Locale, such as `ja_JP`, of the text the model writes; empty uses `en_US` |
 | `mention` | empty | Mention, such as `@example-user`, added to urgent issues; empty adds none |
 | `report-repository` | `${{ github.repository }}` | Repository, as `owner/name`, that holds the issues; keep the default (see below) |
 | `targets` | `targets.toml` | Path of the targets file in the checkout |
@@ -154,6 +157,8 @@ A finding is filed once its result is settled:
 An issue is `urgent` when the finding is Critical, or High and confirmed by validation. Every code-vuln finding is confirmed, so all of its High findings are urgent. When the `mention` input is set, an urgent issue mentions it at the top, and an issue that becomes urgent later gets a comment with the mention.
 
 The `sync` action files an issue with the scan's details first. When `bedrock-model-id` is set, it then asks the model to add Summary, Why it matters, and Risk if left unresolved sections. If the model fails after the retries, the issue keeps only the details and ends with a note saying so, and a later run tries again. Setting `bedrock-model-id` later adds the sections to open issues that lack them, and clearing it leaves written sections in place.
+
+The model writes the sections, the summaries, and the visual report in the locale that the `language` input names, such as `ja_JP`. The headings, tables, comments, and notes that the actions write stay in English. Changing `language` does not rewrite sections already written; new issues and issues without sections get the new language.
 
 ## Handling an issue
 
@@ -199,7 +204,7 @@ Sync reads state only from issues that `github-actions[bot]` created, and ignore
 
 The `report` action posts an issue titled `Continuum weekly report YYYY-Www` with the label `weekly-report`. The body counts open, new, and closed findings per severity and per repository, names the scans that did not complete, and lists the open findings and the findings closed that week in collapsed sections. A list that does not fit in the body continues in comments. Findings closed as not planned by the owner or as duplicates do not count as closed.
 
-When `bedrock-model-id` is set, the model also summarizes each severity that has open findings and writes a Japanese visual report as a single HTML file, which the action uploads as an artifact kept for 400 days and links from the issue. A part the model fails to write after the retries is left out, and the body ends with a note that names it. Without a model, the report has neither part and no note. Posting a report closes the previous week's report, and a rerun in the same week rewrites that week's report.
+When `bedrock-model-id` is set, the model also summarizes each severity that has open findings and writes a visual report as a single HTML file, which the action uploads as an artifact kept for 400 days and links from the issue. A part the model fails to write after the retries is left out, and the body ends with a note that names it. Without a model, the report has neither part and no note. Posting a report closes the previous week's report, and a rerun in the same week rewrites that week's report.
 
 ## Code reviews
 

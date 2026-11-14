@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.13、pytest、GitHub Actions の composite action
 
-**Spec:** `docs/superpowers/specs/2026-11-14-report-language-design.md`
+**Spec:** `docs/superpowers/archive/specs/2026-11-14-report-language-design.md`
 
 ## Global Constraints
 

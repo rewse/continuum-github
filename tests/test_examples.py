@@ -72,6 +72,7 @@ def test_example_workflows_pass_the_model_variable() -> None:
     for name in ("sync.yml", "report.yml"):
         text = (EXAMPLES / "workflows" / name).read_text()
         assert "bedrock-model-id: ${{ vars.BEDROCK_MODEL_ID }}" in text
+        assert "language: ${{ vars.LANGUAGE }}" in text
         assert "kiro" not in text.lower()
 
 

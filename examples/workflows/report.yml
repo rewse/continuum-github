@@ -43,4 +43,5 @@ jobs:
         with:
           agent-space-id: ${{ vars.AGENT_SPACE_ID }}
           bedrock-model-id: ${{ vars.BEDROCK_MODEL_ID }}
+          language: ${{ vars.LANGUAGE }}
           mention: ${{ vars.MENTION }}
