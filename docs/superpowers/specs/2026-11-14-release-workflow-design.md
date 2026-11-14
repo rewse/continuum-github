@@ -44,7 +44,7 @@ continuum-github のリリースはタグを手で打つだけで、GitHub Relea
 
 - 既存のタグ `v0.1.0` と `v0.1.1` にも、git-cliff のリリースノートだけで GitHub Release を後から作る。両方のビルド物の中のバージョンは `0.1.0` なので、成果物は添付しない。
 - 導入後の最初のリリースは `make release-patch` で `v0.1.2` を出す。ルールセットの作成と push は所有者の確認を取ってから行う。
-- 利用者側（security-findings）のピンは、`rewse/*` が Dependabot のクールダウンの対象外なので、Dependabot の PR で上げる。
+- 利用者側（security-findings）のピンは、workflow 2 つと `pyproject.toml` の git 依存を同じ SHA にそろえて上げる。Dependabot の github-actions は workflow のピンしか上げず、3 か所の SHA を比べるテストで落ちるので、その PR は閉じて手で上げる。
 
 ## ビルダーに任せること
 
