@@ -9,6 +9,9 @@ ROOT = Path(__file__).parent.parent
 ACTIONS = ("report", "sync")
 PINNED_USE = re.compile(r"^[\w.-]+/[\w.-]+(/[\w./-]+)?@[0-9a-f]{40}$")
 VERSION_COMMENT = re.compile(r"@[0-9a-f]{40}  # v\d+\.\d+\.\d+$")
+USE_LINE = re.compile(
+    r"^\s*(?:- )?uses: (?P<action>[^@\s]+)@(?P<pin>[0-9a-f]{40}  # \S+)$", re.M
+)
 
 
 def _path(name: str) -> Path:
@@ -51,6 +54,23 @@ def test_actions_are_composite_and_pin_every_use() -> None:
             line for line in _path(name).read_text().splitlines() if "uses:" in line
         ]
         assert all(VERSION_COMMENT.search(line) for line in lines), lines
+
+
+def _pins(paths: list[Path]) -> dict[str, set[str]]:
+    pins: dict[str, set[str]] = {}
+    for path in paths:
+        for match in USE_LINE.finditer(path.read_text()):
+            pins.setdefault(match["action"], set()).add(match["pin"])
+    return pins
+
+
+def test_actions_pin_shared_uses_like_the_workflows() -> None:
+    workflows = _pins(sorted((ROOT / ".github/workflows").glob("*.yml")))
+    actions = _pins([_path(name) for name in ACTIONS])
+    shared = actions.keys() & workflows.keys()
+    assert shared
+    for action in shared:
+        assert actions[action] == workflows[action], action
 
 
 def test_actions_keep_expressions_out_of_run_scripts() -> None:
