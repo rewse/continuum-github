@@ -45,7 +45,7 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: uv sync --project "$GITHUB_ACTION_PATH/.." --locked --safe-chain-skip-minimum-package-age
+      run: uv sync --project "$GITHUB_ACTION_PATH/.." --locked --no-dev --safe-chain-skip-minimum-package-age
 
     - name: Install npm dependencies
       shell: bash

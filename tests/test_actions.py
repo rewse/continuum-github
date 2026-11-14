@@ -100,7 +100,7 @@ def test_actions_run_the_cli_from_the_action_checkout() -> None:
                 assert env["TARGETS"] == "${{ inputs.targets }}"
         install = _step(name, "Install dependencies")["run"]
         assert install == (
-            'uv sync --project "$GITHUB_ACTION_PATH/.." --locked'
+            'uv sync --project "$GITHUB_ACTION_PATH/.." --locked --no-dev'
             " --safe-chain-skip-minimum-package-age"
         )
 
