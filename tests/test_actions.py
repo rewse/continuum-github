@@ -10,7 +10,8 @@ ACTIONS = ("report", "sync")
 PINNED_USE = re.compile(r"^[\w.-]+/[\w.-]+(/[\w./-]+)?@[0-9a-f]{40}$")
 VERSION_COMMENT = re.compile(r"@[0-9a-f]{40}  # v\d+\.\d+\.\d+$")
 USE_LINE = re.compile(
-    r"^\s*(?:- )?uses: (?P<action>[^@\s]+)@(?P<pin>[0-9a-f]{40}  # \S+)$", re.M
+    r"^\s*(?:- )?uses: (?P<action>[^@\s]+)@(?P<pin>[0-9a-f]{40}  # \S+)$",
+    re.MULTILINE,
 )
 
 
