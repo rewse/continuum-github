@@ -1,0 +1,72 @@
+name: Continuum sync
+description: Sync AWS Security Agent findings into GitHub issues and write their issue sections.
+
+inputs:
+  agent-space-id:
+    description: ID of the AWS Security Agent space.
+    required: true
+  aws-region:
+    description: AWS Region of the agent space.
+    default: us-east-1
+  github-token:
+    description: Token that reads and writes issues in the report repository.
+    default: ${{ github.token }}
+  kiro-api-key:
+    description: Kiro API key used to write issue sections.
+    required: true
+  mention:
+    description: Mention added to urgent findings, such as a GitHub handle. Empty adds none.
+    default: ""
+  report-repository:
+    description: Repository, as owner/name, that holds the finding issues.
+    default: ${{ github.repository }}
+  targets:
+    description: Path to the targets file, relative to the workspace.
+    default: targets.toml
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+
+    - name: Setup Aikido Safe Chain
+      uses: rewse/actions/setup-safe-chain@f336e87609e41dacccd0831db7f49a785e827d40  # v1.1.9
+
+    - name: Install dependencies
+      shell: bash
+      run: uv sync --project "$GITHUB_ACTION_PATH/.." --locked --safe-chain-skip-minimum-package-age
+
+    - name: Sync findings
+      id: sync
+      shell: bash
+      # The targets path is relative to the caller's checkout.
+      working-directory: ${{ github.workspace }}
+      run: uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-scan sync --targets "$TARGETS"
+      env:
+        AGENT_SPACE_ID: ${{ inputs.agent-space-id }}
+        AWS_REGION: ${{ inputs.aws-region }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        MENTION: ${{ inputs.mention }}
+        REPORT_REPOSITORY: ${{ inputs.report-repository }}
+        TARGETS: ${{ inputs.targets }}
+
+    - name: Install Kiro CLI
+      if: steps.sync.outputs.needs-sections != '0'
+      shell: bash
+      # The official installer is allowed as an exception to pinned installs.
+      run: curl -fsSL https://cli.kiro.dev/install | bash
+
+    - name: Write issue sections
+      if: steps.sync.outputs.needs-sections != '0'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-scan sections --targets "$TARGETS"
+      env:
+        AGENT_SPACE_ID: ${{ inputs.agent-space-id }}
+        AWS_REGION: ${{ inputs.aws-region }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        KIRO_API_KEY: ${{ inputs.kiro-api-key }}
+        MENTION: ${{ inputs.mention }}
+        REPORT_REPOSITORY: ${{ inputs.report-repository }}
+        TARGETS: ${{ inputs.targets }}
