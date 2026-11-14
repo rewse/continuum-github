@@ -1,6 +1,6 @@
 [project]
 name = "continuum-github"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Track AWS Continuum and Security Agent findings in GitHub issues and publish a weekly report."
 license = "MIT"
 license-files = ["LICENSE"]
@@ -25,6 +25,9 @@ venv = ".venv"
 # The import package name differs from the project name.
 [tool.hatch.build.targets.wheel]
 packages = ["src/continuum_scan"]
+
+[tool.hatch.version]
+path = "src/continuum_scan/__init__.py"
 
 [tool.ruff.lint.isort]
 force-single-line = true

@@ -84,7 +84,6 @@ wheels = [
 
 [[package]]
 name = "continuum-github"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
