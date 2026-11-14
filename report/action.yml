@@ -9,7 +9,7 @@ inputs:
     description: AWS Region of the agent space.
     default: us-east-1
   github-token:
-    description: Token that reads and writes issues in the report repository.
+    description: Token that reads and writes issues in the report repository. Keep the default; the actions read state only from issues that github-actions[bot] opened in the calling repository, so another token makes sync file every finding again.
     default: ${{ github.token }}
   kiro-api-key:
     description: Kiro API key used to write the report.
@@ -18,7 +18,7 @@ inputs:
     description: Mention added to urgent findings, such as a GitHub handle. Empty adds none.
     default: ""
   report-repository:
-    description: Repository, as owner/name, that holds the finding issues.
+    description: Repository, as owner/name, that holds the finding issues. Keep the default; the actions read state only from issues that github-actions[bot] opened in the calling repository, so another repository makes sync file every finding again.
     default: ${{ github.repository }}
   targets:
     description: Path to the targets file, relative to the workspace.
