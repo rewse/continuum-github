@@ -83,11 +83,13 @@ Both actions accept these inputs:
 |---|---|---|
 | `agent-space-id` | required | ID of the Security Agent space |
 | `aws-region` | `us-east-1` | Region of the Agent Space and the Continuum environments |
-| `github-token` | `${{ github.token }}` | Token that reads and writes issues in the report repository |
+| `github-token` | `${{ github.token }}` | Token that reads and writes issues in the report repository; keep the default (see below) |
 | `kiro-api-key` | required | Kiro API key |
 | `mention` | empty | Mention, such as `@example-user`, added to urgent issues; empty adds none |
-| `report-repository` | `${{ github.repository }}` | Repository, as `owner/name`, that holds the issues |
+| `report-repository` | `${{ github.repository }}` | Repository, as `owner/name`, that holds the issues; keep the default (see below) |
 | `targets` | `targets.toml` | Path of the targets file in the checkout |
+
+Only the defaults of `github-token` and `report-repository` are supported. The actions read their state back only from issues opened by `github-actions[bot]`, the author of issues created with `github.token`. With a personal access token, a GitHub App token, or another repository, sync does not recognize the issues it filed and files every finding again. Run the workflows in the report repository itself.
 
 The `report` action has the output `html-url`, the URL of the uploaded HTML report.
 

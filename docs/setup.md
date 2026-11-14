@@ -8,7 +8,10 @@ The `continuum-scan setup` commands run from a release of this repository throug
 
 ```sh
 SHA=<release commit SHA>
+export AWS_REGION=us-east-1
 ```
+
+`continuum-scan setup` reads the Region from `AWS_REGION` and uses `us-east-1` when it is unset. It ignores the Region of your AWS CLI profile, so export `AWS_REGION` with the Region of your Agent Space in the shell that runs steps 5 to 7.
 
 ## 1. Write the targets file
 
@@ -33,16 +36,24 @@ aws securityagent list-integrations --region us-east-1 \
 
 ## 3. Prepare the AWS side
 
-The tool does not create the Agent Space, the pentests, their schedules, or AWS Config recording. Prepare them yourself, using [examples/infra/security-agent.yaml](../examples/infra/security-agent.yaml) as a reference. That template creates an Agent Space with two connected repositories, the Security Agent service role, one target domain, one pentest with a weekly EventBridge Scheduler schedule, AWS Config recording with its bucket, and the role that the code-vuln collector uses to read AWS Config. Its comments describe how to add sign-in for a site and how to leave out risk types whose probes could change data or availability.
+The tool does not create the Agent Space, the pentests, their schedules, or AWS Config recording. Prepare them yourself, starting from the example templates. Copy [examples/infra/security-agent.yaml](../examples/infra/security-agent.yaml) and [examples/infra/github-actions-role.yaml](../examples/infra/github-actions-role.yaml), which step 4 uses, to `infra/` in your report repository:
 
-Change the repositories, target domains, pentests, and schedules to match `targets.toml`. The title of each pentest must equal the `pentest` of its site. The AWS Config recorder uses the service-linked role `AWSServiceRoleForConfig`; create it first with `aws iam create-service-linked-role --aws-service-name config.amazonaws.com` if it does not exist. If AWS Config already records in the Region, remove the recorder, the delivery channel, and the bucket from the template.
+```sh
+mkdir -p infra
+cp <path to continuum-github>/examples/infra/security-agent.yaml \
+  <path to continuum-github>/examples/infra/github-actions-role.yaml infra/
+```
+
+The copy of `security-agent.yaml` creates an Agent Space with two connected repositories, the Security Agent service role, one target domain, one pentest with a weekly EventBridge Scheduler schedule, AWS Config recording with its bucket, and the role that the code-vuln collector uses to read AWS Config. Its comments describe how to add sign-in for a site and how to leave out risk types whose probes could change data or availability.
+
+In `infra/security-agent.yaml`, change the repositories, target domains, pentests, and schedules to match `targets.toml`. The title of each pentest must equal the `pentest` of its site. The AWS Config recorder uses the service-linked role `AWSServiceRoleForConfig`; create it first with `aws iam create-service-linked-role --aws-service-name config.amazonaws.com` if it does not exist. If AWS Config already records in the Region, remove the recorder, the delivery channel, and the bucket from the template.
 
 A pentest needs verified target domains, so deploy the template twice. The first deployment leaves out the pentests:
 
 ```sh
 aws cloudformation deploy --region us-east-1 \
   --stack-name security-agent \
-  --template-file examples/infra/security-agent.yaml \
+  --template-file infra/security-agent.yaml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides GitHubIntegrationId=<integration ID> \
     GitHubOwner=example-org TargetDomainsVerified=false
@@ -68,7 +79,7 @@ aws cloudformation describe-stacks --region us-east-1 --stack-name security-agen
 
 ## 4. Create the GitHub Actions role
 
-[examples/infra/github-actions-role.yaml](../examples/infra/github-actions-role.yaml) creates the GitHub OIDC provider and a role with the permissions the actions need: read access to the Agent Space's pentests, code reviews, and findings, permission to start code review jobs and pentest revalidations, and read access to the Continuum code-vuln findings. The role trusts only workflows on the `main` branch of the report repository.
+`infra/github-actions-role.yaml`, copied in step 3, creates the GitHub OIDC provider and a role with the permissions the actions need: read access to the Agent Space's pentests, code reviews, and findings, permission to start code review jobs and pentest revalidations, and read access to the Continuum code-vuln findings. The role trusts only workflows on the `main` branch of the report repository.
 
 The trust policy uses GitHub's immutable OIDC subject, which embeds the numeric IDs of the owner and the repository, so a renamed or recreated repository cannot assume the role. Read the IDs:
 
@@ -81,14 +92,14 @@ Then deploy:
 ```sh
 aws cloudformation deploy --region us-east-1 \
   --stack-name continuum-github \
-  --template-file examples/infra/github-actions-role.yaml \
+  --template-file infra/github-actions-role.yaml \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides AgentSpaceId=<AgentSpaceId> \
     GitHubOwner=example-org GitHubOwnerId=<owner ID> \
     GitHubRepository=security-findings GitHubRepositoryId=<repository ID>
 ```
 
-An account holds only one OIDC provider for `token.actions.githubusercontent.com`. If one already exists, remove `GitHubOidcProvider` from the template and use the existing provider's ARN in the trust policy. If your repository's tokens use the older subject format, `repo:<owner>/<repository>:ref:refs/heads/main`, change the condition to match. The stack output `GitHubActionsRoleArn` is the role's ARN.
+An account holds only one OIDC provider for `token.actions.githubusercontent.com`. If one already exists, remove `GitHubOidcProvider` from `infra/github-actions-role.yaml` and use the existing provider's ARN in the trust policy. If your repository's tokens use the older subject format, `repo:<owner>/<repository>:ref:refs/heads/main`, change the condition to match. The stack output `GitHubActionsRoleArn` is the role's ARN.
 
 ## 5. Create the code-vuln environments
 
@@ -165,7 +176,7 @@ Copy [examples/workflows/sync.yml](../examples/workflows/sync.yml) and [examples
 uses: rewse/continuum-github/sync@<release commit SHA>  # v1.2.3
 ```
 
-Add a Dependabot configuration for the `github-actions` ecosystem, and Dependabot then keeps the SHA and its version comment current. Adjust the schedules if you like. `sync.yml` runs every two hours, and `report.yml` runs every Friday at 21:35 UTC. The role trusts only `main`, so both jobs run only there. If the Agent Space is not in `us-east-1`, set `aws-region` in both the AWS credentials step and the action.
+Add a Dependabot configuration for the `github-actions` ecosystem, and Dependabot then keeps the SHA and its version comment current. Adjust the schedules if you like. `sync.yml` runs every two hours, and `report.yml` runs every Friday at 21:35 UTC. The role trusts only `main`, so both jobs run only there. If the Agent Space is not in `us-east-1`, set `aws-region` in both the AWS credentials step and the action to the Region you exported as `AWS_REGION`. Keep the default `github-token` and `report-repository` inputs, because sync recognizes only the issues that `github-actions[bot]` opened in the report repository.
 
 Commit `targets.toml` and the workflows to `main`, then run each workflow once by hand:
 
