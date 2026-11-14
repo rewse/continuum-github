@@ -169,6 +169,12 @@ gh variable set MENTION --repo example-org/security-findings --body @example-use
 
 `MENTION` is optional. When set, urgent issues mention it; when unset or empty, they mention no one.
 
+If you upgrade from v0.1, the actions no longer take the `kiro-api-key` input. Remove it from the `with:` of both workflows, and delete the secret:
+
+```sh
+gh secret delete KIRO_API_KEY --repo example-org/security-findings
+```
+
 ## 10. Add the workflows
 
 Copy [examples/workflows/sync.yml](../examples/workflows/sync.yml) and [examples/workflows/report.yml](../examples/workflows/report.yml) to `.github/workflows/` in your report repository. They reference the actions with a placeholder SHA of zeros and the comment `# vX.Y.Z`. Replace both with the commit SHA and version of the release you use:

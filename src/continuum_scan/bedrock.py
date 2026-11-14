@@ -58,11 +58,11 @@ def log_failure(purpose: Purpose, reason: str) -> None:
     print(f"model_failed purpose={purpose} reason={reason}", file=sys.stderr)
 
 
-def bedrock_client(region: str) -> Any:
-    """Returns a bedrock-runtime client that makes at most 3 attempts per call."""
+def bedrock_client(region: str, attempts: int = 3) -> Any:
+    """Returns a bedrock-runtime client that makes at most attempts per call."""
     config = Config(
         read_timeout=READ_TIMEOUT,
-        retries={"mode": "standard", "total_max_attempts": 3},
+        retries={"mode": "standard", "total_max_attempts": attempts},
     )
     return boto3.client("bedrock-runtime", region_name=region, config=config)
 
@@ -96,11 +96,21 @@ def _first_text(response: dict[str, Any]) -> str | None:
 
 
 class Bedrock:
-    """Asks one Bedrock model one question at a time, without tools."""
+    """Asks one Bedrock model one question at a time, without tools.
 
-    def __init__(self, client: ConverseClient, model_id: str) -> None:
+    Page requests go to page_client when one is given, so they can retry
+    less than the short requests.
+    """
+
+    def __init__(
+        self,
+        client: ConverseClient,
+        model_id: str,
+        page_client: ConverseClient | None = None,
+    ) -> None:
         self.client = client
         self.model_id = model_id
+        self.page_client = page_client or client
 
     def ask(
         self, prompt: str, purpose: Purpose, resources: Sequence[Path] = ()
@@ -111,8 +121,9 @@ class Bedrock:
         the answer is printed or logged, because both can repeat finding
         details; a failure logs only its purpose and error code.
         """
+        client = self.page_client if purpose == "page" else self.client
         try:
-            response = self.client.converse(
+            response = client.converse(
                 modelId=self.model_id,
                 system=[{"text": SYSTEM_PROMPT}],
                 messages=[

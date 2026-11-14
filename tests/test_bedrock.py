@@ -128,6 +128,17 @@ def test_bedrock_client_sets_the_timeout_and_retries() -> None:
     assert config.read_timeout == 600
     # total_max_attempts counts the first call, so this is 3 calls in all.
     assert config.retries == {"mode": "standard", "total_max_attempts": 3}
+    page = bedrock_client("us-east-1", attempts=1).meta.config
+    assert page.retries == {"mode": "standard", "total_max_attempts": 1}
+
+
+def test_ask_sends_page_requests_to_the_page_client() -> None:
+    answer = _response("<<<CONTINUUM-BEGIN>>>a<<<CONTINUUM-END>>>")
+    client, page = FakeClient(answer), FakeClient(answer)
+    model = Bedrock(client, "m1", page_client=page)
+    assert model.ask("p", "page") == "a"
+    assert model.ask("p", "summary") == "a"
+    assert (len(page.calls), len(client.calls)) == (1, 1)
 
 
 def test_finding_sections_parses_and_validates_json() -> None:

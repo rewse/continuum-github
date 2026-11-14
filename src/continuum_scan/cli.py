@@ -105,7 +105,13 @@ def _model(settings: Settings) -> Bedrock | None:
     """Returns the Bedrock model, or None when no model ID is set."""
     if settings.bedrock_model_id is None:
         return None
-    return Bedrock(bedrock_client(settings.bedrock_region), settings.bedrock_model_id)
+    return Bedrock(
+        bedrock_client(settings.bedrock_region),
+        settings.bedrock_model_id,
+        # A page call can run for the whole read timeout, and the report may
+        # ask twice; more attempts would outlast the report job's timeout.
+        page_client=bedrock_client(settings.bedrock_region, attempts=1),
+    )
 
 
 def _sections(settings: Settings, targets: Targets) -> int:
