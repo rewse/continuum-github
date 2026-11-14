@@ -158,7 +158,79 @@ An issue is `urgent` when the finding is Critical, or High and confirmed by vali
 
 The `sync` action files an issue with the scan's details first. When `bedrock-model-id` is set, it then asks the model to add Summary, Why it matters, and Risk if left unresolved sections. If the model fails after the retries, the issue keeps only the details and ends with a note saying so, and a later run tries again. Setting `bedrock-model-id` later adds the sections to open issues that lack them, and clearing it leaves written sections in place.
 
-The model writes the sections, the summaries, and the visual report in the locale that the `language` input names, such as `ja_JP`. The headings, tables, comments, and notes that the actions write stay in English. Changing `language` does not rewrite sections already written; new issues and issues without sections get the new language.
+### Issue body
+
+With `bedrock-model-id` set, the body of a code-review issue looks like this. The finding is made up, and the state marker at the end is shortened:
+
+```markdown
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Type | code-review |
+| Repository | example-app |
+| Location | src/api/export.py:42-51 |
+| Confidence | HIGH |
+| Detected | 2026-11-16T03:12:45+00:00 |
+| Continuum ID | 0f3c9a6e-5b1d-4e2a-9c7f-2d8e4b6a1c03 |
+
+## Summary
+
+The export endpoint puts the `sort` query parameter into an SQL statement without checking it, so a request can run its own SQL.
+
+## Why it matters
+
+Anyone who can call the endpoint can read tables other than the one being exported, including user records.
+
+## Risk if left unresolved
+
+An attacker can copy the whole database, and the leak is hard to notice because the requests look like normal exports.
+
+<details><summary>Details from Continuum</summary>
+
+### Description
+
+The handler builds the ORDER BY clause by concatenating the sort parameter...
+
+### Reasoning
+
+The parameter reaches cursor.execute without passing through an allowlist...
+
+</details>
+
+<!-- continuum-state: {"finding_ids":["0f3c9a6e-..."],...} -->
+```
+
+Without a model, the body has the table, the details, and the state marker, and none of the three sections:
+
+```markdown
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Type | code-review |
+...
+
+<details><summary>Details from Continuum</summary>
+
+### Description
+
+The handler builds the ORDER BY clause by concatenating the sort parameter...
+
+</details>
+
+<!-- continuum-state: {"finding_ids":["0f3c9a6e-..."],...} -->
+```
+
+When the model is on but fails after the retries, the body has the same layout as without a model and adds this note before the state marker:
+
+```markdown
+_Bedrock could not write the Summary, Why it matters, and Risk if left unresolved sections, so this issue shows the scanner's details only. A later sync tries again._
+```
+
+The rows of the table depend on the scan: a pentest issue has Site instead of Location, and a code-vuln issue has neither. The headings inside the details also come from the scan, such as Attack script for a pentest or Synopsis and Severity reasoning for code-vuln.
+
+### Language
+
+The model writes the sections, the summaries, and the visual report in the locale that the `language` input names. A locale is a lowercase language code with an optional uppercase region, such as `ja`, `ja_JP`, or `zh_TW`. Any other value fails the action, even when the model is off. With `language: ja_JP`, the three sections in the example above are in Japanese, and the rest of the body stays the same. The headings, tables, comments, and notes that the actions write stay in English. Changing `language` does not rewrite sections already written; new issues and issues without sections get the new language.
 
 ## Handling an issue
 
