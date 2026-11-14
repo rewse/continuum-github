@@ -75,7 +75,52 @@ jobs:
           kiro-api-key: ${{ secrets.KIRO_API_KEY }}
 ```
 
-The `report` action takes the same inputs. [examples/workflows/](examples/workflows/) has both workflows in full. Replace the placeholder SHA of zeros and `vX.Y.Z` with the commit SHA and version of a release. Once the reference is a real SHA with its version comment, Dependabot's `github-actions` updates keep it current. Give both workflows the same concurrency group so that one waits for the other.
+Add a second workflow that calls the `report` action once a week:
+
+```yaml
+name: Weekly report
+
+on:
+  schedule:
+    - cron: "35 21 * * 5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: continuum-github
+  cancel-in-progress: false
+
+jobs:
+  report:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd  # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - id: report
+        uses: rewse/continuum-github/report@0000000000000000000000000000000000000000  # vX.Y.Z
+        with:
+          agent-space-id: ${{ vars.AGENT_SPACE_ID }}
+          kiro-api-key: ${{ secrets.KIRO_API_KEY }}
+      - name: Link the HTML report
+        env:
+          HTML_URL: ${{ steps.report.outputs.html-url }}
+        run: echo "[HTML report]($HTML_URL)" >> "$GITHUB_STEP_SUMMARY"
+```
+
+The last step is optional. It links the HTML report from the run's summary page, using the `html-url` output. [examples/workflows/](examples/workflows/) has both workflows in full. Replace the placeholder SHA of zeros and `vX.Y.Z` with the commit SHA and version of a release. Once the reference is a real SHA with its version comment, Dependabot's `github-actions` updates keep it current. Give both workflows the same concurrency group so that one waits for the other.
 
 Both actions accept these inputs:
 
