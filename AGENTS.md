@@ -12,6 +12,8 @@ The actions run in the user's private repository, and their logs are visible to 
 
 `make release-patch`, `make release-minor`, and `make release-major` run `scripts/bump_version.sh` with `--push`: they require a clean `main` in sync with origin, commit the new `__version__` in `src/continuum_github/__init__.py`, tag it `vX.Y.Z`, and push both, so run them only when asked. The tag push starts `release.yml`, which builds the package and creates the GitHub Release with notes that git-cliff builds from the Conventional Commits since the previous tag. Nothing is published to PyPI. Do not rename `release.yml`. The ruleset `Protect release tags` restricts creating, updating, and deleting `v*` tags to the repository admin role.
 
+After a release, update the owner's report repository `rewse/security-findings` to it: set the commit SHA and the version comment of the `rewse/continuum-github/sync` and `rewse/continuum-github/report` references in its `.github/workflows/sync.yml` and `report.yml`, and follow that repository's `AGENTS.md` for validation. When an update is missed, the weekly Dependabot github-actions update in that repository raises it.
+
 ## Validation
 
 Run these before committing, and stage new files first because `--all-files` skips untracked files:
