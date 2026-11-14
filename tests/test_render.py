@@ -6,27 +6,27 @@ from datetime import datetime
 
 import pytest
 
-from continuum_scan.models import Detection
-from continuum_scan.models import Severity
-from continuum_scan.models import code_review_key
-from continuum_scan.models import code_vuln_key
-from continuum_scan.models import pentest_key
-from continuum_scan.render import FALLBACK_NOTE
-from continuum_scan.render import Sections
-from continuum_scan.render import add_mention
-from continuum_scan.render import extract_section
-from continuum_scan.render import fit_body
-from continuum_scan.render import initial_state
-from continuum_scan.render import issue_body
-from continuum_scan.render import issue_labels
-from continuum_scan.render import issue_title
-from continuum_scan.render import replace_severity
-from continuum_scan.render import retitle
-from continuum_scan.render import severity_label
-from continuum_scan.render import site_label
-from continuum_scan.render import urgent_notice
-from continuum_scan.state import parse_state
-from continuum_scan.state import replace_state
+from continuum_github.models import Detection
+from continuum_github.models import Severity
+from continuum_github.models import code_review_key
+from continuum_github.models import code_vuln_key
+from continuum_github.models import pentest_key
+from continuum_github.render import FALLBACK_NOTE
+from continuum_github.render import Sections
+from continuum_github.render import add_mention
+from continuum_github.render import extract_section
+from continuum_github.render import fit_body
+from continuum_github.render import initial_state
+from continuum_github.render import issue_body
+from continuum_github.render import issue_labels
+from continuum_github.render import issue_title
+from continuum_github.render import replace_severity
+from continuum_github.render import retitle
+from continuum_github.render import severity_label
+from continuum_github.render import site_label
+from continuum_github.render import urgent_notice
+from continuum_github.state import parse_state
+from continuum_github.state import replace_state
 
 DAY1 = datetime(2026, 11, 1, tzinfo=UTC)
 

@@ -57,7 +57,7 @@ Resources:
                 # immutable OIDC subject format.
                 token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:ref:refs/heads/main
       Policies:
-        - PolicyName: continuum-scan
+        - PolicyName: continuum-github
           PolicyDocument:
             Version: "2012-10-17"
             Statement:

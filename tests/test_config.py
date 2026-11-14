@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from continuum_scan.config import Repository
-from continuum_scan.config import Settings
-from continuum_scan.config import Site
-from continuum_scan.config import Targets
-from continuum_scan.config import code_review_title
-from continuum_scan.config import environment_name
-from continuum_scan.config import load_settings
-from continuum_scan.config import load_targets
+from continuum_github.config import Repository
+from continuum_github.config import Settings
+from continuum_github.config import Site
+from continuum_github.config import Targets
+from continuum_github.config import code_review_title
+from continuum_github.config import environment_name
+from continuum_github.config import load_settings
+from continuum_github.config import load_targets
 
 TARGETS = Path(__file__).parent / "targets.toml"
 

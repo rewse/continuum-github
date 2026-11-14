@@ -1,10 +1,10 @@
 """Tests for severities, detections, and match keys."""
 
-from continuum_scan.models import Severity
-from continuum_scan.models import code_review_key
-from continuum_scan.models import code_vuln_key
-from continuum_scan.models import pentest_key
-from continuum_scan.models import pentest_severity
+from continuum_github.models import Severity
+from continuum_github.models import code_review_key
+from continuum_github.models import code_vuln_key
+from continuum_github.models import pentest_key
+from continuum_github.models import pentest_severity
 
 
 def test_severity_parse_and_filed() -> None:

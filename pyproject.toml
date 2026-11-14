@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-continuum-scan = "continuum_scan.cli:main"
+continuum-github = "continuum_github.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -22,12 +22,11 @@ typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"
 
-# The import package name differs from the project name.
 [tool.hatch.build.targets.wheel]
-packages = ["src/continuum_scan"]
+packages = ["src/continuum_github"]
 
 [tool.hatch.version]
-path = "src/continuum_scan/__init__.py"
+path = "src/continuum_github/__init__.py"
 
 [tool.ruff.lint.isort]
 force-single-line = true

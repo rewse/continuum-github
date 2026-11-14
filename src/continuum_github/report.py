@@ -9,17 +9,17 @@ from datetime import datetime
 from datetime import timedelta
 from pathlib import Path
 
-from continuum_scan.bedrock import ModelLike
-from continuum_scan.bedrock import visual_report_source
-from continuum_scan.config import DEFAULT_LANGUAGE
-from continuum_scan.models import Severity
-from continuum_scan.models import TargetScan
-from continuum_scan.records import BOT
-from continuum_scan.records import Record
-from continuum_scan.render import SOURCE_LABELS
-from continuum_scan.render import extract_section
-from continuum_scan.render import strip_severity_tag
-from continuum_scan.sync import GitHubLike
+from continuum_github.bedrock import ModelLike
+from continuum_github.bedrock import visual_report_source
+from continuum_github.config import DEFAULT_LANGUAGE
+from continuum_github.models import Severity
+from continuum_github.models import TargetScan
+from continuum_github.records import BOT
+from continuum_github.records import Record
+from continuum_github.render import SOURCE_LABELS
+from continuum_github.render import extract_section
+from continuum_github.render import strip_severity_tag
+from continuum_github.sync import GitHubLike
 
 HTML_URL_PLACEHOLDER = "{{CONTINUUM_HTML_URL}}"
 WEEKLY_LABEL = "weekly-report"

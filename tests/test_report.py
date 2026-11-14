@@ -16,23 +16,23 @@ from fakes import FakeGitHub
 from fakes import FakeModel
 from fakes import RecordingModel
 
-from continuum_scan import cli
-from continuum_scan.bedrock import severity_summaries
-from continuum_scan.bedrock import visual_report_source
-from continuum_scan.models import Severity
-from continuum_scan.models import TargetScan
-from continuum_scan.records import BOT
-from continuum_scan.records import Record
-from continuum_scan.report import build_visual_report
-from continuum_scan.report import build_weekly
-from continuum_scan.report import color_unstyled_svg_text
-from continuum_scan.report import publish_weekly
-from continuum_scan.report import render_weekly
-from continuum_scan.report import set_html_lang
-from continuum_scan.report import strip_external_fonts
-from continuum_scan.report import unavailable_parts
-from continuum_scan.report import weekly_title
-from continuum_scan.state import IssueState
+from continuum_github import cli
+from continuum_github.bedrock import severity_summaries
+from continuum_github.bedrock import visual_report_source
+from continuum_github.models import Severity
+from continuum_github.models import TargetScan
+from continuum_github.records import BOT
+from continuum_github.records import Record
+from continuum_github.report import build_visual_report
+from continuum_github.report import build_weekly
+from continuum_github.report import color_unstyled_svg_text
+from continuum_github.report import publish_weekly
+from continuum_github.report import render_weekly
+from continuum_github.report import set_html_lang
+from continuum_github.report import strip_external_fonts
+from continuum_github.report import unavailable_parts
+from continuum_github.report import weekly_title
+from continuum_github.state import IssueState
 
 NOW = datetime(2026, 11, 13, 21, 35, tzinfo=UTC)
 

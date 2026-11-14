@@ -5,14 +5,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from continuum_scan.bedrock import Purpose
-from continuum_scan.codereview import StartResult
-from continuum_scan.config import Repository
-from continuum_scan.config import Site
-from continuum_scan.config import code_review_title
-from continuum_scan.models import Detection
-from continuum_scan.models import RevalidationResult
-from continuum_scan.models import TargetScan
+from continuum_github.bedrock import Purpose
+from continuum_github.codereview import StartResult
+from continuum_github.config import Repository
+from continuum_github.config import Site
+from continuum_github.config import code_review_title
+from continuum_github.models import Detection
+from continuum_github.models import RevalidationResult
+from continuum_github.models import TargetScan
 
 # A targets file for tests that run the command line.
 TARGETS_PATH = Path(__file__).parent / "targets.toml"

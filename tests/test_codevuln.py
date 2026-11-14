@@ -6,9 +6,9 @@ import boto3
 import pytest
 from botocore.stub import Stubber
 
-from continuum_scan.codevuln import CodeVulnClient
-from continuum_scan.config import Repository
-from continuum_scan.models import Severity
+from continuum_github.codevuln import CodeVulnClient
+from continuum_github.config import Repository
+from continuum_github.models import Severity
 
 REPO = Repository("actions", False)
 ENV = "env1"

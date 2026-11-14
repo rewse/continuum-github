@@ -89,7 +89,7 @@ def test_actions_keep_expressions_out_of_run_scripts() -> None:
 
 def test_actions_run_the_cli_from_the_action_checkout() -> None:
     for name in ACTIONS:
-        cli_steps = [s for s in _steps(name) if "continuum-scan" in s.get("run", "")]
+        cli_steps = [s for s in _steps(name) if "continuum-github" in s.get("run", "")]
         assert cli_steps
         for step in cli_steps:
             assert 'uv run --project "$GITHUB_ACTION_PATH/.." --no-sync' in step["run"]
@@ -113,13 +113,13 @@ def test_actions_run_the_cli_from_the_action_checkout() -> None:
 def test_sync_writes_sections_only_when_needed_and_enabled() -> None:
     sync = _step("sync", "Sync findings")
     assert sync["id"] == "sync"
-    assert "continuum-scan sync" in sync["run"]
+    assert "continuum-github sync" in sync["run"]
     assert "BEDROCK_MODEL_ID" not in sync["env"]
     sections = _step("sync", "Write issue sections")
     assert sections["if"] == (
         "steps.sync.outputs.needs-sections != '0' && inputs.bedrock-model-id != ''"
     )
-    assert "continuum-scan sections" in sections["run"]
+    assert "continuum-github sections" in sections["run"]
     assert sections["env"]["BEDROCK_MODEL_ID"] == "${{ inputs.bedrock-model-id }}"
     assert sections["env"]["BEDROCK_REGION"] == "${{ inputs.bedrock-region }}"
 

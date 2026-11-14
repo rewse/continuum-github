@@ -15,36 +15,36 @@ import boto3
 import httpx
 from botocore.config import Config
 
-from continuum_scan.bedrock import Bedrock
-from continuum_scan.bedrock import bedrock_client
-from continuum_scan.bedrock import severity_summaries
-from continuum_scan.codereview import CodeReviewClient
-from continuum_scan.codevuln import CodeVulnClient
-from continuum_scan.config import DEFAULT_REGION
-from continuum_scan.config import Settings
-from continuum_scan.config import Targets
-from continuum_scan.config import load_settings
-from continuum_scan.config import load_targets
-from continuum_scan.github import GitHub
-from continuum_scan.models import Severity
-from continuum_scan.pentest import PentestClient
-from continuum_scan.records import records_from_issues
-from continuum_scan.report import WeeklyData
-from continuum_scan.report import build_visual_report
-from continuum_scan.report import build_weekly
-from continuum_scan.report import publish_weekly
-from continuum_scan.report import render_weekly
-from continuum_scan.report import unavailable_parts
-from continuum_scan.setup import configure_pr_review
-from continuum_scan.setup import ensure_code_reviews
-from continuum_scan.setup import ensure_collector
-from continuum_scan.setup import ensure_environments
-from continuum_scan.setup import label_definitions
-from continuum_scan.sync import SyncCounts
-from continuum_scan.sync import collect_scans
-from continuum_scan.sync import fill_sections
-from continuum_scan.sync import run_sync
-from continuum_scan.sync import start_code_reviews
+from continuum_github.bedrock import Bedrock
+from continuum_github.bedrock import bedrock_client
+from continuum_github.bedrock import severity_summaries
+from continuum_github.codereview import CodeReviewClient
+from continuum_github.codevuln import CodeVulnClient
+from continuum_github.config import DEFAULT_REGION
+from continuum_github.config import Settings
+from continuum_github.config import Targets
+from continuum_github.config import load_settings
+from continuum_github.config import load_targets
+from continuum_github.github import GitHub
+from continuum_github.models import Severity
+from continuum_github.pentest import PentestClient
+from continuum_github.records import records_from_issues
+from continuum_github.report import WeeklyData
+from continuum_github.report import build_visual_report
+from continuum_github.report import build_weekly
+from continuum_github.report import publish_weekly
+from continuum_github.report import render_weekly
+from continuum_github.report import unavailable_parts
+from continuum_github.setup import configure_pr_review
+from continuum_github.setup import ensure_code_reviews
+from continuum_github.setup import ensure_collector
+from continuum_github.setup import ensure_environments
+from continuum_github.setup import label_definitions
+from continuum_github.sync import SyncCounts
+from continuum_github.sync import collect_scans
+from continuum_github.sync import fill_sections
+from continuum_github.sync import run_sync
+from continuum_github.sync import start_code_reviews
 
 DEFAULT_TARGETS = Path("targets.toml")
 GITHUB_API = "https://api.github.com"
@@ -322,7 +322,7 @@ def _write_output(name: str, value: int) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="continuum-scan")
+    parser = argparse.ArgumentParser(prog="continuum-github")
     commands = parser.add_subparsers(dest="command", required=True)
     sync = commands.add_parser("sync")
     sync.add_argument("--targets", type=Path, default=DEFAULT_TARGETS)

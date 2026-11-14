@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from continuum_scan.state import IssueState
-from continuum_scan.state import parse_state
+from continuum_github.state import IssueState
+from continuum_github.state import parse_state
 
 BOT = "github-actions[bot]"
 

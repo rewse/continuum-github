@@ -9,7 +9,7 @@ inputs:
     description: AWS Region of the agent space.
     default: us-east-1
   bedrock-model-id:
-    description: Bedrock model or inference profile ID, such as us.anthropic.claude-sonnet-5-5, that writes the summaries and the visual report. Empty skips the model.
+    description: Bedrock model or inference profile ID, such as global.anthropic.claude-sonnet-5-5, that writes the summaries and the visual report. Empty skips the model.
     default: ""
   bedrock-region:
     description: AWS Region that Bedrock is called in. Empty uses aws-region.
@@ -65,7 +65,7 @@ runs:
       working-directory: ${{ github.workspace }}
       run: |
         VISUAL_EXPLAINER_DIR="$GITHUB_ACTION_PATH/../node_modules/visual-explainer/plugins/visual-explainer" \
-          uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-scan report build --targets "$TARGETS" --out "$RUNNER_TEMP/report"
+          uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-github report build --targets "$TARGETS" --out "$RUNNER_TEMP/report"
       env:
         AGENT_SPACE_ID: ${{ inputs.agent-space-id }}
         AWS_REGION: ${{ inputs.aws-region }}
@@ -90,7 +90,7 @@ runs:
     - name: Publish report
       shell: bash
       working-directory: ${{ github.workspace }}
-      run: uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-scan report publish --dir "$RUNNER_TEMP/report" --html-url "$HTML_URL"
+      run: uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-github report publish --dir "$RUNNER_TEMP/report" --html-url "$HTML_URL"
       env:
         AGENT_SPACE_ID: ${{ inputs.agent-space-id }}
         AWS_REGION: ${{ inputs.aws-region }}

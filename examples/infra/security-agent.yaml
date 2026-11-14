@@ -93,7 +93,7 @@ Resources:
                   - logs:PutLogEvents
                 Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/securityagent/${AgentSpaceName}*:log-stream:*
 
-  # Data access role of the code-vuln collector, which continuum-scan setup
+  # Data access role of the code-vuln collector, which continuum-github setup
   # code-vuln creates through the API because the collector has no
   # CloudFormation resource type.
   CollectorAccessRole:
@@ -250,7 +250,7 @@ Resources:
         - !GetAtt TargetDomainWww.TargetDomainId
       # Security Agent rejects PR comments on public repositories, so only the
       # private ones have LeaveComments: true. A stack update can reset these
-      # capabilities, so run continuum-scan setup pr-review after every
+      # capabilities, so run continuum-github setup pr-review after every
       # update. Keep this list in sync with targets.toml.
       IntegratedResources:
         - Integration: !Ref GitHubIntegrationId
@@ -340,8 +340,8 @@ Outputs:
     Description: Repository variable AGENT_SPACE_ID and AgentSpaceId of github-actions-role.yaml.
     Value: !GetAtt AgentSpace.AgentSpaceId
   CollectorAccessRoleArn:
-    Description: Data access role that continuum-scan setup code-vuln gives the collector.
+    Description: Data access role that continuum-github setup code-vuln gives the collector.
     Value: !GetAtt CollectorAccessRole.Arn
   ServiceRoleArn:
-    Description: Service role that continuum-scan setup code-review gives the code reviews.
+    Description: Service role that continuum-github setup code-review gives the code reviews.
     Value: !GetAtt ServiceRole.Arn

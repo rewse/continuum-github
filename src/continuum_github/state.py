@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from continuum_scan.models import Source
+from continuum_github.models import Source
 
 _PREFIX = "<!-- continuum-state: "
 _SUFFIX = " -->"

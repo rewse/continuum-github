@@ -8,16 +8,16 @@ from typing import Any
 
 from botocore.exceptions import ClientError
 
-from continuum_scan.config import Repository
-from continuum_scan.config import code_review_title
-from continuum_scan.models import CompletedScan
-from continuum_scan.models import Detection
-from continuum_scan.models import Severity
-from continuum_scan.models import TargetScan
-from continuum_scan.models import code_review_key
-from continuum_scan.models import pentest_severity
-from continuum_scan.pentest import _alive
-from continuum_scan.pentest import _pages
+from continuum_github.config import Repository
+from continuum_github.config import code_review_title
+from continuum_github.models import CompletedScan
+from continuum_github.models import Detection
+from continuum_github.models import Severity
+from continuum_github.models import TargetScan
+from continuum_github.models import code_review_key
+from continuum_github.models import pentest_severity
+from continuum_github.pentest import _alive
+from continuum_github.pentest import _pages
 
 MISSING = "MISSING"
 # A code review that has no job at all, as right after it is created.

@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from continuum_scan.config import load_targets
+from continuum_github.config import load_targets
 
 ROOT = Path(__file__).parent.parent
 EXAMPLES = ROOT / "examples"
@@ -96,6 +96,7 @@ def test_example_role_invokes_bedrock_models() -> None:
         (EXAMPLES / "infra" / "github-actions-role.yaml").read_text(), _CfnLoader
     )
     (policy,) = template["Resources"]["GitHubActionsRole"]["Properties"]["Policies"]
+    assert policy["PolicyName"] == "continuum-github"
     statements = [
         s
         for s in policy["PolicyDocument"]["Statement"]
