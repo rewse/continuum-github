@@ -34,6 +34,13 @@ jobs:
       - name: Build package
         run: uv build
 
+      # A tag pushed by hand can point at a commit whose __version__ differs,
+      # which would publish misnamed assets.
+      - name: Check the tag against the built version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: test -f "dist/continuum_github-${TAG_NAME#v}-py3-none-any.whl"
+
       - name: Generate Release Notes
         id: changelog
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff  # v4.9.1

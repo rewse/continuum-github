@@ -73,6 +73,20 @@ def test_release_keeps_expressions_out_of_run_scripts() -> None:
         assert "${{" not in step.get("run", ""), step.get("name")
 
 
+def test_release_checks_the_tag_against_the_built_version() -> None:
+    steps = _steps("release.yml")
+    build = _index(steps, lambda s: "uv build" in s.get("run", ""))
+    check = _index(
+        steps,
+        lambda s: (
+            "dist/continuum_github-${TAG_NAME#v}-py3-none-any.whl" in s.get("run", "")
+        ),
+    )
+    create = _index(steps, lambda s: "gh release create" in s.get("run", ""))
+    assert build < check < create
+    assert steps[check]["env"] == {"TAG_NAME": "${{ github.ref_name }}"}
+
+
 def test_release_notes_skip_version_bumps() -> None:
     parsers = tomllib.loads((ROOT / "cliff.toml").read_text())["git"]["commit_parsers"]
     assert {"message": "^chore: bump version", "skip": True} in parsers
