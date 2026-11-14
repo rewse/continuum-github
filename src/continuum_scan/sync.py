@@ -27,6 +27,7 @@ from continuum_scan.reconcile import Update
 from continuum_scan.reconcile import plan_sync
 from continuum_scan.records import Record
 from continuum_scan.records import records_from_issues
+from continuum_scan.render import FALLBACK_NOTE
 from continuum_scan.render import add_mention
 from continuum_scan.render import fit_body
 from continuum_scan.render import initial_state
@@ -441,9 +442,9 @@ def fill_sections(
     """Has the model write the summary sections of open issues that lack them.
 
     The rewritten body of an urgent issue starts with mention unless it is
-    empty. Issues whose detection cannot be read, or for which the model gives no
-    valid answer, are left for a later run. Returns the number of issues
-    filled.
+    empty. Issues whose detection cannot be read are left for a later run.
+    An issue for which the model gives no valid answer gets FALLBACK_NOTE
+    once and is retried by a later run. Returns the number of issues filled.
     """
     filled = 0
     for record in records_from_issues(github.issues()):
@@ -466,6 +467,14 @@ def fill_sections(
             continue
         sections = finding_sections(model, detection)
         if sections is None:
+            # Marks the issue once; a later run retries the sections.
+            if FALLBACK_NOTE not in record.body:
+                github.update_issue(
+                    record.number,
+                    body=fit_body(
+                        issue_body(detection, state, None, mention, fallback=True)
+                    ),
+                )
             continue
         state = dataclasses.replace(state, sections=True)
         github.update_issue(

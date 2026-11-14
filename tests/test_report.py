@@ -29,6 +29,7 @@ from continuum_scan.report import color_unstyled_svg_text
 from continuum_scan.report import publish_weekly
 from continuum_scan.report import render_weekly
 from continuum_scan.report import strip_external_fonts
+from continuum_scan.report import unavailable_parts
 from continuum_scan.report import weekly_title
 from continuum_scan.state import IssueState
 
@@ -196,9 +197,63 @@ def test_render_weekly_orders_sections_and_hides_empty_ones() -> None:
     assert "- #1 [new] [high] [pentest] ansible-playbooks: t1" in body
 
 
-def test_render_weekly_marks_a_missing_summary_of_open_findings() -> None:
-    body, _ = render_weekly(build_weekly([_rec(1, "severity:high")], [], NOW), {})
-    assert "## High\n\n_Summary unavailable this week._" in body
+TWO_SEVERITIES = build_weekly(
+    [_rec(1, "severity:high"), _rec(2, "severity:medium")], [], NOW
+)
+
+
+def test_render_weekly_leaves_out_missing_summaries() -> None:
+    body, _ = render_weekly(TWO_SEVERITIES, {Severity.MEDIUM: "Medium summary."})
+    assert "## High\n\n" not in body
+    assert "## Medium\n\nMedium summary." in body
+    assert "Written without Bedrock" not in body
+
+
+def test_render_weekly_ends_with_the_fallback_note() -> None:
+    body, _ = render_weekly(
+        TWO_SEVERITIES, {}, ["High summary", "Japanese visual report"]
+    )
+    assert body.rstrip().endswith(
+        "_Written without Bedrock this week: High summary, Japanese visual report._"
+    )
+
+
+def test_render_weekly_keeps_the_note_last_when_lists_overflow() -> None:
+    records = [_rec(n, "severity:medium", title="x" * 200) for n in range(1, 600)]
+    body, comments = render_weekly(
+        build_weekly(records, [], NOW), {}, ["Medium summary"]
+    )
+    assert len(body) <= 65000 and comments
+    assert body.rstrip().endswith(
+        "_Written without Bedrock this week: Medium summary._"
+    )
+
+
+def test_unavailable_parts_lists_missing_summaries_and_html() -> None:
+    assert unavailable_parts(TWO_SEVERITIES, {Severity.MEDIUM: "s"}, html=False) == [
+        "High summary",
+        "Japanese visual report",
+    ]
+    both = {Severity.HIGH: "s", Severity.MEDIUM: "s"}
+    assert unavailable_parts(TWO_SEVERITIES, both, html=True) == []
+
+
+def test_publish_weekly_with_html_links_it() -> None:
+    url = "https://github.com/example-org/security-findings/actions/runs/1/artifacts/2"
+    github = FakeGitHub()
+    body, comments = render_weekly(TWO_SEVERITIES, {})
+    publish_weekly(github, "Continuum weekly report 2026-W46", body, comments, url)
+    (posted,) = github.bodies.values()
+    assert f"Japanese visual report: {url}" in posted
+
+
+def test_publish_weekly_without_html_removes_the_line() -> None:
+    github = FakeGitHub()
+    body, comments = render_weekly(TWO_SEVERITIES, {})
+    publish_weekly(github, "Continuum weekly report 2026-W46", body, comments, None)
+    (posted,) = github.bodies.values()
+    assert "Japanese visual report" not in posted
+    assert "{{CONTINUUM_HTML_URL}}" not in posted
 
 
 def test_list_lines_drop_the_severity_tag_of_the_title() -> None:
@@ -231,12 +286,12 @@ def test_publish_weekly_updates_same_week_and_closes_older() -> None:
     result = publish_weekly(
         github,
         "Continuum weekly report 2026-W46",
-        "see {{CONTINUUM_HTML_URL}}",
+        "head\n\nJapanese visual report: {{CONTINUUM_HTML_URL}}\n\nlists\n",
         [],
         None,
     )
     assert result == "updated"
-    assert github.bodies[11] == "see unavailable this week"
+    assert github.bodies[11] == "head\n\nlists\n"
     assert (11, {"state": "open"}) in github.updates and (
         10,
         {"state": "closed", "state_reason": "completed"},
@@ -256,7 +311,7 @@ def test_critical_row_appears_only_when_non_zero() -> None:
     assert data.repositories == {
         "ansible-playbooks": {Severity.CRITICAL: 1, Severity.HIGH: 1}
     }
-    body, _ = render_weekly(data, {})
+    body, _ = render_weekly(data, {Severity.CRITICAL: "One critical."})
     assert "| Critical | 1 | 0 | 0 |" in body and "## Critical" in body
     assert "| Repository | Critical | High | Medium |" in body
     assert "| ansible-playbooks | 1 | 1 | 0 |" in body
@@ -448,7 +503,9 @@ def test_cli_report_build_writes_files_and_prints_counts(
     ]
     data = build_weekly(records, [_ts("pentest", "weekly-a", "FAILED", None)], NOW)
     monkeypatch.setattr(
-        cli, "_build_report", lambda settings, targets: (data, "body", ["c1"])
+        cli,
+        "_build_report",
+        lambda settings, targets, model: (data, {Severity.HIGH: "High summary."}),
     )
     visual = []
 
@@ -465,8 +522,10 @@ def test_cli_report_build_writes_files_and_prints_counts(
     )
     assert capsys.readouterr().out == "open=1 new=1 closed=1 incomplete=1 html=1\n"
     assert visual == [(data, Path("/ve"), out / "report.ja.html")]
-    assert (out / "body.md").read_text() == "body"
-    assert json.loads((out / "comments.json").read_text()) == ["c1"]
+    body = (out / "body.md").read_text()
+    assert (body, []) == render_weekly(data, {Severity.HIGH: "High summary."})
+    assert "Written without Bedrock" not in body
+    assert json.loads((out / "comments.json").read_text()) == []
     assert (out / "title.txt").read_text() == "Continuum weekly report 2026-W46"
 
 
@@ -499,7 +558,7 @@ def test_cli_report_build_counts_a_missing_visual_report(
     monkeypatch.setenv("REPORT_REPOSITORY", "example-org/security-findings")
     monkeypatch.setenv("BEDROCK_MODEL_ID", "m1")
     monkeypatch.setattr(
-        cli, "_build_report", lambda settings, targets: (DATA, "body", [])
+        cli, "_build_report", lambda settings, targets, model: (DATA, {})
     )
     monkeypatch.setattr(cli, "build_visual_report", lambda *args: False)
     assert (
@@ -509,6 +568,15 @@ def test_cli_report_build_counts_a_missing_visual_report(
         == 0
     )
     assert capsys.readouterr().out.endswith(" html=0\n")
+    assert (
+        (tmp_path / "body.md")
+        .read_text()
+        .rstrip()
+        .endswith(
+            "_Written without Bedrock this week: High summary, Medium summary, "
+            "Japanese visual report._"
+        )
+    )
 
 
 def test_cli_report_build_without_a_model_skips_summaries_and_html(
@@ -543,6 +611,9 @@ def test_cli_report_build_without_a_model_skips_summaries_and_html(
         == 0
     )
     assert not (out / "report.ja.html").exists()
+    body = (out / "body.md").read_text()
+    assert "## High\n\n" not in body
+    assert "Written without Bedrock" not in body
     assert capsys.readouterr().out.rstrip().endswith("html=0")
 
 

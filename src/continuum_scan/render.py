@@ -23,10 +23,14 @@ REOPENED = (
 REVALIDATED_FIXED = "Revalidated: not reproduced."
 REVALIDATED_STILL = "Revalidated: still reproducible. Reopening."
 REVALIDATION_FAILED = "Revalidation did not complete."
+FALLBACK_NOTE = (
+    "_Bedrock could not write the Summary, Why it matters, and Risk if left "
+    "unresolved sections, so this issue shows the scanner's details only. "
+    "A later sync tries again._"
+)
 
 _MAX_BODY = 65536
 _MAX_TITLE = 256
-_PENDING = "_Pending summary._"
 _TRUNCATED = "… (truncated)"
 _DETAILS_OPEN = "<details><summary>Details from Continuum</summary>"
 _DETAILS_CLOSE = "</details>"
@@ -159,17 +163,12 @@ def _table(detection: Detection) -> str:
     return "\n".join(lines)
 
 
-def _sections(sections: Sections | None) -> str:
-    texts = (
-        (_PENDING,) * 3
-        if sections is None
-        else (sections.summary, sections.why, sections.risk)
+def _sections(sections: Sections) -> str:
+    texts = (sections.summary, sections.why, sections.risk)
+    return "\n\n".join(
+        f"## {heading}\n\n{_escape(text.strip())}"
+        for heading, text in zip(_SECTION_HEADINGS, texts, strict=True)
     )
-    parts = []
-    for heading, text in zip(_SECTION_HEADINGS, texts, strict=True):
-        body = text if sections is None else _escape(text.strip())
-        parts.append(f"## {heading}\n\n{body}")
-    return "\n\n".join(parts)
 
 
 def issue_body(
@@ -177,9 +176,12 @@ def issue_body(
     state: IssueState,
     sections: Sections | None,
     mention: str,
+    fallback: bool = False,
 ) -> str:
     """Returns the issue body, within GitHub's 65,536-character limit.
 
+    Without sections the body has no section headings. fallback puts
+    FALLBACK_NOTE after the details to say the model could not write them.
     An urgent detection puts mention on the first line unless it is empty.
     The details text is cut from the end when the body would be too long,
     so the state marker at the end always survives.
@@ -187,13 +189,17 @@ def issue_body(
     head = []
     if detection.urgent and mention:
         head.append(mention)
-    head += [_table(detection), _sections(sections), _DETAILS_OPEN]
+    head.append(_table(detection))
+    if sections is not None:
+        head.append(_sections(sections))
+    head.append(_DETAILS_OPEN)
     prefix = "\n\n".join(head) + "\n\n"
     inner = "\n\n".join(
         f"### {_escape(heading)}\n\n{_escape(text)}"
         for heading, text in detection.details
     )
-    suffix = f"\n\n{_DETAILS_CLOSE}\n\n{render_state(state)}\n"
+    note = f"{FALLBACK_NOTE}\n\n" if fallback else ""
+    suffix = f"\n\n{_DETAILS_CLOSE}\n\n{note}{render_state(state)}\n"
     if len(prefix) + len(inner) + len(suffix) > _MAX_BODY:
         room = max(0, _MAX_BODY - len(prefix) - len(suffix) - len(_TRUNCATED))
         inner = inner[:room] + _TRUNCATED

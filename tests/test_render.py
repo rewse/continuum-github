@@ -11,6 +11,7 @@ from continuum_scan.models import Severity
 from continuum_scan.models import code_review_key
 from continuum_scan.models import code_vuln_key
 from continuum_scan.models import pentest_key
+from continuum_scan.render import FALLBACK_NOTE
 from continuum_scan.render import Sections
 from continuum_scan.render import add_mention
 from continuum_scan.render import extract_section
@@ -127,11 +128,26 @@ def test_body_orders_sections_and_ends_with_state() -> None:
     assert parse_state(body) == initial_state(PENTEST_HIGH)
 
 
-def test_body_without_sections_marks_them_pending() -> None:
+def test_body_without_sections_has_no_section_headings() -> None:
     body = issue_body(CODE_MEDIUM, initial_state(CODE_MEDIUM), None, "@octocat")
-    assert body.count("_Pending summary._") == 3
+    for heading in ("Summary", "Why it matters", "Risk if left unresolved"):
+        assert f"## {heading}" not in body
+    details = "<details><summary>Details from Continuum</summary>"
+    assert body.index("| Severity |") < body.index(details)
     assert not body.startswith("@octocat")
     assert "| Site |" not in body
+    assert FALLBACK_NOTE not in body
+
+
+def test_body_with_fallback_ends_with_the_note_before_the_state() -> None:
+    state = initial_state(CODE_MEDIUM)
+    body = issue_body(CODE_MEDIUM, state, None, "", fallback=True)
+    assert (
+        body.index("</details>")
+        < body.index(FALLBACK_NOTE)
+        < body.index("<!-- continuum-state")
+    )
+    assert parse_state(body) == state
 
 
 def test_body_escapes_table_cells() -> None:

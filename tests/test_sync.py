@@ -23,6 +23,7 @@ from continuum_scan.models import RevalidationResult
 from continuum_scan.models import Severity
 from continuum_scan.models import TargetScan
 from continuum_scan.render import CLOSED_ABSENT
+from continuum_scan.render import FALLBACK_NOTE
 from continuum_scan.render import REOPENED
 from continuum_scan.render import REVALIDATED_FIXED
 from continuum_scan.render import issue_body
@@ -696,13 +697,59 @@ def test_fill_sections_skips_missing_detections_and_failed_answers() -> None:
         )
         == 0
     )
+    assert github.bodies == {}
     assert (
         fill_sections(
             TARGETS, github, found, FakeCodeVuln(), FakeCodeReview(), FakeModel(None)
         )
         == 0
     )
-    assert github.bodies == {}
+    assert github.bodies[1].count(FALLBACK_NOTE) == 1
+    assert _state(github.bodies[1]).sections is False
+
+
+def test_fill_sections_leaves_an_already_marked_issue_alone() -> None:
+    detection = _det("k1")
+    state = IssueState(
+        source="pentest",
+        target="weekly-x",
+        keys=("k1",),
+        finding_ids=("f1",),
+        pentest_id="pt-1",
+    )
+    item = _issue_item(1, keys=("k1",))
+    item["body"] = issue_body(detection, state, None, "", fallback=True)
+    github = FakeGitHub(issues=[item])
+    pentest = FakePentest(scans={}, detections={"f1": detection})
+    assert (
+        fill_sections(
+            TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview(), FakeModel(None)
+        )
+        == 0
+    )
+    assert github.updates == []
+
+
+def test_fill_sections_adds_headings_to_a_body_without_them() -> None:
+    detection = _det("k1")
+    state = IssueState(
+        source="pentest",
+        target="weekly-x",
+        keys=("k1",),
+        finding_ids=("f1",),
+        pentest_id="pt-1",
+    )
+    item = _issue_item(1, keys=("k1",))
+    item["body"] = issue_body(detection, state, None, "", fallback=True)
+    github = FakeGitHub(issues=[item])
+    pentest = FakePentest(scans={}, detections={"f1": detection})
+    model = FakeModel('{"summary": "S", "why": "W", "risk": "R"}')
+    assert (
+        fill_sections(TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview(), model)
+        == 1
+    )
+    assert "## Summary\n\nS" in github.bodies[1]
+    assert FALLBACK_NOTE not in github.bodies[1]
 
 
 def test_run_sync_adds_the_site_label_to_existing_issues() -> None:

@@ -25,8 +25,8 @@ WEEKLY_LABEL = "weekly-report"
 MAX_BODY = 65000
 
 CONTINUED = "Continued in the comments below."
-SUMMARY_UNAVAILABLE = "_Summary unavailable this week._"
-HTML_UNAVAILABLE = "unavailable this week"
+HTML_PART = "Japanese visual report"
+_HTML_LINE = f"\n\n{HTML_PART}: {HTML_URL_PLACEHOLDER}"
 
 _REPORTED = (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM)
 _STATUS_ORDER = ("wip", "pending", "new")
@@ -257,8 +257,9 @@ def _head(data: WeeklyData, summaries: Mapping[Severity, str]) -> str:
         if data.counts[severity][0] == 0:
             continue
         summary = summaries.get(severity)
-        text = _escape(summary.strip()) if summary else SUMMARY_UNAVAILABLE
-        parts.append(f"## {_heading(severity)}\n\n{text}")
+        if not summary:
+            continue
+        parts.append(f"## {_heading(severity)}\n\n{_escape(summary.strip())}")
     repositories = (
         _table(
             ("Repository", *(_heading(severity) for severity in severities)),
@@ -274,7 +275,7 @@ def _head(data: WeeklyData, summaries: Mapping[Severity, str]) -> str:
     if data.incomplete:
         lines = "\n".join(f"- {_escape(name)}" for name in data.incomplete)
         parts.append(f"## Incomplete scans\n\n{lines}")
-    parts.append(f"Japanese visual report: {HTML_URL_PLACEHOLDER}")
+    parts.append(f"{HTML_PART}: {HTML_URL_PLACEHOLDER}")
     return "\n\n".join(parts)
 
 
@@ -304,9 +305,13 @@ def _fit(
     open_lines: list[str],
     closed_label: str,
     closed_lines: list[str],
+    extra: int = 0,
 ) -> tuple[int, int]:
-    """Returns how many open and closed lines fit in the body with the notice."""
-    fixed = len(head) + 2 + 2 + 2 + len(CONTINUED) + 1
+    """Returns how many open and closed lines fit in the body with the notice.
+
+    extra is the length of the paragraphs that follow the notice.
+    """
+    fixed = len(head) + 2 + 2 + 2 + len(CONTINUED) + 1 + extra
     open_lengths = [len(line) for line in open_lines]
     closed_lengths = [len(line) for line in closed_lines]
 
@@ -355,31 +360,71 @@ def _render_segments(segments: Sequence[tuple[str, list[str]]]) -> str:
     return "\n\n".join(_block(label, lines) for label, lines in segments) + "\n"
 
 
+def unavailable_parts(
+    data: WeeklyData, summaries: Mapping[Severity, str], html: bool
+) -> list[str]:
+    """Names the parts the model was asked for but could not write.
+
+    A severity with open findings and no summary is named "<Severity>
+    summary", in report order, followed by the visual report when html is
+    false.
+    """
+    parts = [
+        f"{_heading(severity)} summary"
+        for severity, row in data.counts.items()
+        if row[0] and not summaries.get(severity)
+    ]
+    if not html:
+        parts.append(HTML_PART)
+    return parts
+
+
 def render_weekly(
-    data: WeeklyData, summaries: Mapping[Severity, str]
+    data: WeeklyData,
+    summaries: Mapping[Severity, str],
+    unavailable: Sequence[str] = (),
 ) -> tuple[str, list[str]]:
     """Returns the report body and the comments that continue its lists.
 
     The body and each comment stay within MAX_BODY characters. When the
     lists do not fit, whole lines from their end move to the comments, which
-    keep them collapsed under "(continued)" headings.
+    keep them collapsed under "(continued)" headings. unavailable, when not
+    empty, ends the body with a note naming the parts the model could not
+    write.
     """
     head = _head(data, summaries)
     open_label = f"{_OPEN_LABEL} ({len(data.open_items)})"
     closed_label = f"{_CLOSED_LABEL} ({len(data.closed_items)})"
     open_lines = [_open_line(item) for item in data.open_items]
     closed_lines = [_closed_line(item) for item in data.closed_items]
+    tail = (
+        [f"_Written without Bedrock this week: {', '.join(unavailable)}._"]
+        if unavailable
+        else []
+    )
 
     body = (
         "\n\n".join(
-            (head, _block(open_label, open_lines), _block(closed_label, closed_lines))
+            (
+                head,
+                _block(open_label, open_lines),
+                _block(closed_label, closed_lines),
+                *tail,
+            )
         )
         + "\n"
     )
     if len(body) <= MAX_BODY:
         return body, []
 
-    k_open, k_closed = _fit(head, open_label, open_lines, closed_label, closed_lines)
+    k_open, k_closed = _fit(
+        head,
+        open_label,
+        open_lines,
+        closed_label,
+        closed_lines,
+        sum(len(text) + 2 for text in tail),
+    )
     body = (
         "\n\n".join(
             (
@@ -387,6 +432,7 @@ def render_weekly(
                 _block(open_label, open_lines[:k_open]),
                 _block(closed_label, closed_lines[:k_closed]),
                 CONTINUED,
+                *tail,
             )
         )
         + "\n"
@@ -406,9 +452,13 @@ def publish_weekly(
     """Posts the report and closes the reports of other weeks.
 
     Rewrites and reopens the report with the same title when this workflow
-    filed one, and creates it otherwise. Returns "updated" or "created".
+    filed one, and creates it otherwise. Without html_url, the line that
+    links the visual report is removed. Returns "updated" or "created".
     """
-    body = body.replace(HTML_URL_PLACEHOLDER, html_url or HTML_UNAVAILABLE)
+    if html_url:
+        body = body.replace(HTML_URL_PLACEHOLDER, html_url)
+    else:
+        body = body.replace(_HTML_LINE, "")
     reports = [
         item
         for item in github.issues()

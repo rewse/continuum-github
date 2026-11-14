@@ -26,6 +26,7 @@ from continuum_scan.config import Targets
 from continuum_scan.config import load_settings
 from continuum_scan.config import load_targets
 from continuum_scan.github import GitHub
+from continuum_scan.models import Severity
 from continuum_scan.pentest import PentestClient
 from continuum_scan.records import records_from_issues
 from continuum_scan.report import WeeklyData
@@ -33,6 +34,7 @@ from continuum_scan.report import build_visual_report
 from continuum_scan.report import build_weekly
 from continuum_scan.report import publish_weekly
 from continuum_scan.report import render_weekly
+from continuum_scan.report import unavailable_parts
 from continuum_scan.setup import configure_pr_review
 from continuum_scan.setup import ensure_code_reviews
 from continuum_scan.setup import ensure_collector
@@ -117,16 +119,15 @@ def _sections(settings: Settings, targets: Targets) -> int:
 
 
 def _build_report(
-    settings: Settings, targets: Targets
-) -> tuple[WeeklyData, str, list[str]]:
-    model = _model(settings)
+    settings: Settings, targets: Targets, model: Bedrock | None
+) -> tuple[WeeklyData, dict[Severity, str]]:
+    """Returns the week's data and the summaries the model wrote, if any."""
     with _clients(settings) as (github, pentest, code_vuln, code_review):
         records = records_from_issues(github.issues())
         scans = collect_scans(targets, pentest, code_vuln, code_review)
     data = build_weekly(records, scans, datetime.now(UTC))
     summaries = {} if model is None else severity_summaries(model, data)
-    body, comments = render_weekly(data, summaries)
-    return data, body, comments
+    return data, summaries
 
 
 def _publish(
@@ -141,20 +142,23 @@ def _publish(
 
 
 def _report_build(settings: Settings, targets: Targets, out: Path) -> None:
-    data, body, comments = _build_report(settings, targets)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "body.md").write_text(body, encoding="utf-8")
-    (out / "comments.json").write_text(json.dumps(comments), encoding="utf-8")
-    (out / "title.txt").write_text(data.title, encoding="utf-8")
     model = _model(settings)
+    data, summaries = _build_report(settings, targets, model)
+    out.mkdir(parents=True, exist_ok=True)
     if model is None:
         # A file left by an earlier run must not be uploaded.
         (out / "report.ja.html").unlink(missing_ok=True)
         html = False
+        unavailable: list[str] = []
     else:
         html = build_visual_report(
             model, data, settings.visual_explainer_dir, out / "report.ja.html"
         )
+        unavailable = unavailable_parts(data, summaries, html)
+    body, comments = render_weekly(data, summaries, unavailable)
+    (out / "body.md").write_text(body, encoding="utf-8")
+    (out / "comments.json").write_text(json.dumps(comments), encoding="utf-8")
+    (out / "title.txt").write_text(data.title, encoding="utf-8")
     opened = sum(row[0] for row in data.counts.values())
     new = sum(row[1] for row in data.counts.values())
     closed = sum(row[2] for row in data.counts.values())
