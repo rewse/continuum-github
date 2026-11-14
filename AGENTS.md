@@ -10,7 +10,11 @@ Follow the GitHub configuration rules in `~/git/AGENTS.md` for everything under 
 
 ## Confidentiality
 
-The actions run in the user's private repository, and their logs are visible to everyone with access to it. Never print finding details (titles, descriptions, file paths, URLs, severities per finding) or Kiro's output to workflow logs; the `continuum-scan` CLI prints counts and target names only. Never put real finding details, account IDs, domains, or user names in this repository. Tests and examples use `example.com` domains, the owner `example-org`, and the account `111122223333`; `tests/test_redaction.py` checks for known owner-specific values.
+The actions run in the user's private repository, and their logs are visible to everyone with access to it. Never print finding details (titles, descriptions, file paths, URLs, severities per finding) or Kiro's output to workflow logs; the `continuum-scan` CLI prints counts and target names only. Never put real finding details, account IDs, domains, or user names in this repository. Tests and examples use `example.com` domains, the owner `example-org`, and the account `111122223333`.
+
+## Releases
+
+`make release-patch`, `make release-minor`, and `make release-major` run `scripts/bump_version.sh` with `--push`: they require a clean `main` in sync with origin, commit the new `__version__` in `src/continuum_scan/__init__.py`, tag it `vX.Y.Z`, and push both, so run them only when asked. The tag push starts `release.yml`, which builds the package and creates the GitHub Release with notes that git-cliff builds from the Conventional Commits since the previous tag. Nothing is published to PyPI. Do not rename `release.yml`. The ruleset `Protect release tags` restricts creating, updating, and deleting `v*` tags to the repository admin role.
 
 ## Validation
 
