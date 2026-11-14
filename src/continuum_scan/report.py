@@ -9,8 +9,8 @@ from datetime import datetime
 from datetime import timedelta
 from pathlib import Path
 
-from continuum_scan.kiro import KiroLike
-from continuum_scan.kiro import visual_report_source
+from continuum_scan.bedrock import ModelLike
+from continuum_scan.bedrock import visual_report_source
 from continuum_scan.models import Severity
 from continuum_scan.models import TargetScan
 from continuum_scan.records import BOT
@@ -44,7 +44,7 @@ _UNSTYLED_SVG_TEXT_RULE = (
     "<style>:where(svg text:not([class]):not([fill])) { fill: var(--text); }</style>"
 )
 RENDER_TIMEOUT_SECONDS = 300
-# Keeps the prompt that carries render errors back to Kiro within bounds.
+# Keeps the prompt that carries render errors back to the model within bounds.
 RENDER_ERRORS_MAX_CHARS = 8000
 
 
@@ -497,7 +497,7 @@ def _render(
 
 
 def build_visual_report(
-    kiro: KiroLike,
+    model: ModelLike,
     data: WeeklyData,
     skill_dir: Path,
     out: Path,
@@ -505,8 +505,8 @@ def build_visual_report(
 ) -> bool:
     """Writes the Japanese visual report to out and returns whether it did.
 
-    Kiro writes a page source that visual-explainer renders. When rendering
-    fails, Kiro rewrites the source once with the render errors. Leaves no
+    The model writes a page source that visual-explainer renders. When rendering
+    fails, the model rewrites the source once with the render errors. Leaves no
     file at out when no page renders, including one left by an earlier run.
     The render output is never printed, because it can repeat finding details.
     """
@@ -515,7 +515,7 @@ def build_visual_report(
         src = Path(work) / "report.src.html"
         errors: str | None = None
         for _ in range(2):
-            source = visual_report_source(kiro, data, skill_dir, errors)
+            source = visual_report_source(model, data, skill_dir, errors)
             if source is None:
                 break
             src.write_text(source, encoding="utf-8")

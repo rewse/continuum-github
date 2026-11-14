@@ -15,6 +15,9 @@ import boto3
 import httpx
 from botocore.config import Config
 
+from continuum_scan.bedrock import Bedrock
+from continuum_scan.bedrock import bedrock_client
+from continuum_scan.bedrock import severity_summaries
 from continuum_scan.codereview import CodeReviewClient
 from continuum_scan.codevuln import CodeVulnClient
 from continuum_scan.config import DEFAULT_REGION
@@ -23,8 +26,6 @@ from continuum_scan.config import Targets
 from continuum_scan.config import load_settings
 from continuum_scan.config import load_targets
 from continuum_scan.github import GitHub
-from continuum_scan.kiro import Kiro
-from continuum_scan.kiro import severity_summaries
 from continuum_scan.pentest import PentestClient
 from continuum_scan.records import records_from_issues
 from continuum_scan.report import WeeklyData
@@ -98,24 +99,33 @@ def _sync(settings: Settings, targets: Targets) -> SyncCounts:
     )
 
 
+def _model(settings: Settings) -> Bedrock | None:
+    """Returns the Bedrock model, or None when no model ID is set."""
+    if settings.bedrock_model_id is None:
+        return None
+    return Bedrock(bedrock_client(settings.bedrock_region), settings.bedrock_model_id)
+
+
 def _sections(settings: Settings, targets: Targets) -> int:
-    # Kiro receives KIRO_API_KEY and a few other variables from the environment.
-    kiro = Kiro(settings.kiro_cli, settings.kiro_model)
+    model = _model(settings)
+    if model is None:
+        return 0
     with _clients(settings) as (github, pentest, code_vuln, code_review):
         return fill_sections(
-            targets, github, pentest, code_vuln, code_review, kiro, settings.mention
+            targets, github, pentest, code_vuln, code_review, model, settings.mention
         )
 
 
 def _build_report(
     settings: Settings, targets: Targets
 ) -> tuple[WeeklyData, str, list[str]]:
-    kiro = Kiro(settings.kiro_cli, settings.kiro_model)
+    model = _model(settings)
     with _clients(settings) as (github, pentest, code_vuln, code_review):
         records = records_from_issues(github.issues())
         scans = collect_scans(targets, pentest, code_vuln, code_review)
     data = build_weekly(records, scans, datetime.now(UTC))
-    body, comments = render_weekly(data, severity_summaries(kiro, data))
+    summaries = {} if model is None else severity_summaries(model, data)
+    body, comments = render_weekly(data, summaries)
     return data, body, comments
 
 
@@ -136,10 +146,15 @@ def _report_build(settings: Settings, targets: Targets, out: Path) -> None:
     (out / "body.md").write_text(body, encoding="utf-8")
     (out / "comments.json").write_text(json.dumps(comments), encoding="utf-8")
     (out / "title.txt").write_text(data.title, encoding="utf-8")
-    kiro = Kiro(settings.kiro_cli, settings.kiro_model)
-    html = build_visual_report(
-        kiro, data, settings.visual_explainer_dir, out / "report.ja.html"
-    )
+    model = _model(settings)
+    if model is None:
+        # A file left by an earlier run must not be uploaded.
+        (out / "report.ja.html").unlink(missing_ok=True)
+        html = False
+    else:
+        html = build_visual_report(
+            model, data, settings.visual_explainer_dir, out / "report.ja.html"
+        )
     opened = sum(row[0] for row in data.counts.values())
     new = sum(row[1] for row in data.counts.values())
     closed = sum(row[2] for row in data.counts.values())

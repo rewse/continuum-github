@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC
 from datetime import datetime
@@ -12,12 +13,12 @@ from typing import Any, Literal
 import pytest
 from fakes import TARGETS_PATH
 from fakes import FakeGitHub
-from fakes import FakeKiro
-from fakes import RecordingKiro
+from fakes import FakeModel
+from fakes import RecordingModel
 
 from continuum_scan import cli
-from continuum_scan.kiro import severity_summaries
-from continuum_scan.kiro import visual_report_source
+from continuum_scan.bedrock import severity_summaries
+from continuum_scan.bedrock import visual_report_source
 from continuum_scan.models import Severity
 from continuum_scan.models import TargetScan
 from continuum_scan.records import BOT
@@ -407,24 +408,25 @@ def test_severity_summaries_asks_once_per_severity() -> None:
         [],
         NOW,
     )
-    kiro = FakeKiro(" Two findings. ")
-    assert severity_summaries(kiro, data) == {
+    model = FakeModel(" Two findings. ")
+    assert severity_summaries(model, data) == {
         Severity.HIGH: "Two findings.",
         Severity.MEDIUM: "Two findings.",
     }
-    assert len(kiro.prompts) == 2
+    assert len(model.prompts) == 2
+    assert model.purposes == ["summary", "summary"]
     assert (
-        "t1" in kiro.prompts[0]
-        and "t2" in kiro.prompts[0]
-        and "t3" not in kiro.prompts[0]
+        "t1" in model.prompts[0]
+        and "t2" in model.prompts[0]
+        and "t3" not in model.prompts[0]
     )
 
 
 def test_severity_summaries_drops_bad_answers() -> None:
     data = build_weekly([_rec(1, "severity:high")], [], NOW)
-    assert severity_summaries(FakeKiro(None), data) == {}
-    assert severity_summaries(FakeKiro("  "), data) == {}
-    assert severity_summaries(FakeKiro("x" * 1501), data) == {}
+    assert severity_summaries(FakeModel(None), data) == {}
+    assert severity_summaries(FakeModel("  "), data) == {}
+    assert severity_summaries(FakeModel("x" * 1501), data) == {}
 
 
 def test_cli_report_build_writes_files_and_prints_counts(
@@ -433,6 +435,7 @@ def test_cli_report_build_writes_files_and_prints_counts(
     monkeypatch.setenv("AGENT_SPACE_ID", "as-1")
     monkeypatch.setenv("GITHUB_TOKEN", "t")
     monkeypatch.setenv("REPORT_REPOSITORY", "example-org/security-findings")
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "m1")
     records = [
         _rec(1, "severity:high", created=NOW - timedelta(days=2)),
         _rec(
@@ -449,7 +452,7 @@ def test_cli_report_build_writes_files_and_prints_counts(
     )
     visual = []
 
-    def fake_visual(kiro, data_, skill_dir, out_):
+    def fake_visual(model, data_, skill_dir, out_):
         visual.append((data_, skill_dir, out_))
         return True
 
@@ -494,6 +497,7 @@ def test_cli_report_build_counts_a_missing_visual_report(
     monkeypatch.setenv("AGENT_SPACE_ID", "as-1")
     monkeypatch.setenv("GITHUB_TOKEN", "t")
     monkeypatch.setenv("REPORT_REPOSITORY", "example-org/security-findings")
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "m1")
     monkeypatch.setattr(
         cli, "_build_report", lambda settings, targets: (DATA, "body", [])
     )
@@ -505,6 +509,41 @@ def test_cli_report_build_counts_a_missing_visual_report(
         == 0
     )
     assert capsys.readouterr().out.endswith(" html=0\n")
+
+
+def test_cli_report_build_without_a_model_skips_summaries_and_html(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("AGENT_SPACE_ID", "as-1")
+    monkeypatch.setenv("GITHUB_TOKEN", "t")
+    monkeypatch.setenv("REPORT_REPOSITORY", "example-org/security-findings")
+    monkeypatch.delenv("BEDROCK_MODEL_ID", raising=False)
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("must not be called without a model")
+
+    @contextmanager
+    def clients(settings):
+        yield FakeGitHub(), None, None, None
+
+    monkeypatch.setattr(cli, "bedrock_client", refuse)
+    monkeypatch.setattr(cli, "build_visual_report", refuse)
+    monkeypatch.setattr(cli, "_clients", clients)
+    monkeypatch.setattr(
+        cli,
+        "records_from_issues",
+        lambda issues: [_rec(7, "severity:high", created=NOW - timedelta(days=2))],
+    )
+    monkeypatch.setattr(cli, "collect_scans", lambda *args: [])
+    out = tmp_path / "out"
+    (out).mkdir()
+    (out / "report.ja.html").write_text("stale")
+    assert (
+        cli.main(["report", "build", "--targets", str(TARGETS_PATH), "--out", str(out)])
+        == 0
+    )
+    assert not (out / "report.ja.html").exists()
+    assert capsys.readouterr().out.rstrip().endswith("html=0")
 
 
 def test_strip_external_fonts_removes_google_links_only() -> None:
@@ -531,11 +570,11 @@ def test_build_visual_report_retries_once_with_render_errors(tmp_path) -> None:
         )
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
-    kiro = RecordingKiro(["<html>1</html>", "<html>2</html>"])
+    model = RecordingModel(["<html>1</html>", "<html>2</html>"])
     out = tmp_path / "report.ja.html"
-    assert build_visual_report(kiro, DATA, SKILL_DIR, out, runner=runner) is True
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is True
     assert out.read_text() == "<p>ok</p>"
-    assert "line 3 <ve-bar>: bad" in kiro.prompts[1]
+    assert "line 3 <ve-bar>: bad" in model.prompts[1]
     assert (
         calls[0][:2] == ["node", str(SKILL_DIR / "kit" / "render.mjs")]
         and calls[0][-1] == "--no-check"
@@ -549,13 +588,13 @@ def test_build_visual_report_gives_up_without_writing(tmp_path) -> None:
     )
     assert (
         build_visual_report(
-            RecordingKiro(["a", "b"]), DATA, SKILL_DIR, out, runner=always_fail
+            RecordingModel(["a", "b"]), DATA, SKILL_DIR, out, runner=always_fail
         )
         is False
     )
     assert (
         build_visual_report(
-            RecordingKiro([None]), DATA, SKILL_DIR, out, runner=always_fail
+            RecordingModel([None]), DATA, SKILL_DIR, out, runner=always_fail
         )
         is False
     )
@@ -574,8 +613,8 @@ def test_build_visual_report_writes_the_source_and_removes_partial_output(
         return subprocess.CompletedProcess(args, 1, stdout="", stderr="e")
 
     out = tmp_path / "report.ja.html"
-    kiro = RecordingKiro(["<p>1</p>", "<p>2</p>"])
-    assert build_visual_report(kiro, DATA, SKILL_DIR, out, runner=runner) is False
+    model = RecordingModel(["<p>1</p>", "<p>2</p>"])
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is False
     assert sources == ["<p>1</p>", "<p>2</p>"]
     assert not out.exists()
 
@@ -586,8 +625,8 @@ def test_build_visual_report_ignores_a_stale_output_file(tmp_path) -> None:
     no_output = lambda args, **kw: subprocess.CompletedProcess(
         args, 0, stdout="", stderr=""
     )
-    kiro = RecordingKiro(["a", "b"])
-    assert build_visual_report(kiro, DATA, SKILL_DIR, out, runner=no_output) is False
+    model = RecordingModel(["a", "b"])
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=no_output) is False
     assert not out.exists()
 
 
@@ -596,11 +635,11 @@ def test_build_visual_report_keeps_the_last_render_errors(tmp_path) -> None:
     long_fail = lambda args, **kw: subprocess.CompletedProcess(
         args, 1, stdout="", stderr=stderr
     )
-    kiro = RecordingKiro(["a", "b"])
+    model = RecordingModel(["a", "b"])
     out = tmp_path / "report.ja.html"
-    assert build_visual_report(kiro, DATA, SKILL_DIR, out, runner=long_fail) is False
-    assert "y" * 8000 in kiro.prompts[1]
-    assert "xy" not in kiro.prompts[1]
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=long_fail) is False
+    assert "y" * 8000 in model.prompts[1]
+    assert "xy" not in model.prompts[1]
 
 
 def test_build_visual_report_fails_when_node_cannot_run(tmp_path) -> None:
@@ -608,16 +647,17 @@ def test_build_visual_report_fails_when_node_cannot_run(tmp_path) -> None:
         raise subprocess.TimeoutExpired(args, 300)
 
     out = tmp_path / "report.ja.html"
-    kiro = RecordingKiro(["a", "b"])
-    assert build_visual_report(kiro, DATA, SKILL_DIR, out, runner=runner) is False
+    model = RecordingModel(["a", "b"])
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is False
     assert not out.exists()
 
 
 def test_visual_report_source_passes_skill_files_and_data() -> None:
-    kiro = RecordingKiro(["<html>page</html>"])
-    assert visual_report_source(kiro, DATA, SKILL_DIR) == "<html>page</html>"
-    assert kiro.resources[0] == [SKILL_DIR / name for name in _SKILL_FILES]
-    prompt = kiro.prompts[0]
+    model = RecordingModel(["<html>page</html>"])
+    assert visual_report_source(model, DATA, SKILL_DIR) == "<html>page</html>"
+    assert model.resources[0] == [SKILL_DIR / name for name in _SKILL_FILES]
+    assert model.purposes == ["page"]
+    prompt = model.prompts[0]
     assert "Japanese" in prompt
     assert '<link rel="stylesheet" href="kit.css" data-ve-kit>' in prompt
     for text in ("#7", "high", "pentest", "ansible-playbooks", "SQL injection", "sum7"):
@@ -628,10 +668,10 @@ def test_visual_report_source_passes_skill_files_and_data() -> None:
 
 def test_visual_report_source_skips_missing_files_and_adds_errors(tmp_path) -> None:
     (tmp_path / "SKILL.md").write_text("")
-    kiro = RecordingKiro([None])
-    assert visual_report_source(kiro, DATA, tmp_path, errors="line 9: bad") is None
-    assert kiro.resources[0] == [tmp_path / "SKILL.md"]
-    assert "line 9: bad" in kiro.prompts[0]
+    model = RecordingModel([None])
+    assert visual_report_source(model, DATA, tmp_path, errors="line 9: bad") is None
+    assert model.resources[0] == [tmp_path / "SKILL.md"]
+    assert "line 9: bad" in model.prompts[0]
 
 
 def test_color_unstyled_svg_text_adds_one_low_priority_rule_to_the_head() -> None:
@@ -655,10 +695,10 @@ def test_build_visual_report_colors_unstyled_svg_text(tmp_path) -> None:
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
     out = tmp_path / "report.ja.html"
-    kiro = RecordingKiro(["<html>1</html>"])
-    assert build_visual_report(kiro, DATA, SKILL_DIR, out, runner=runner) is True
+    model = RecordingModel(["<html>1</html>"])
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is True
     assert "fill: var(--text)" in out.read_text()
-    assert "class from the kit" in kiro.prompts[0]
+    assert "class from the kit" in model.prompts[0]
 
 
 def test_withdrawn_issue_without_a_severity_label_counts_its_recorded_severity() -> (

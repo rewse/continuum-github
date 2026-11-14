@@ -73,17 +73,32 @@ def test_sections_prints_the_filled_count(monkeypatch, capsys) -> None:
     monkeypatch.setenv("AGENT_SPACE_ID", "as-1")
     monkeypatch.setenv("GITHUB_TOKEN", "t")
     monkeypatch.setenv("REPORT_REPOSITORY", "example-org/security-findings")
-    monkeypatch.setenv("KIRO_CLI", "/opt/kiro-cli")
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "m1")
     seen = []
 
     def fake_sections(settings, targets):
-        seen.append(settings.kiro_cli)
+        seen.append(settings.bedrock_model_id)
         return 3
 
     monkeypatch.setattr(cli, "_sections", fake_sections)
     assert cli.main(["sections", "--targets", str(TARGETS_PATH)]) == 0
     assert capsys.readouterr().out == "filled=3\n"
-    assert [str(path) for path in seen] == ["/opt/kiro-cli"]
+    assert seen == ["m1"]
+
+
+def _refuse(*args, **kwargs):
+    raise AssertionError("must not be called without a model")
+
+
+def test_sections_without_a_model_reads_nothing(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("AGENT_SPACE_ID", "as-1")
+    monkeypatch.setenv("GITHUB_TOKEN", "t")
+    monkeypatch.setenv("REPORT_REPOSITORY", "example-org/security-findings")
+    monkeypatch.delenv("BEDROCK_MODEL_ID", raising=False)
+    monkeypatch.setattr(cli, "_clients", _refuse)
+    monkeypatch.setattr(cli, "bedrock_client", _refuse)
+    assert cli.main(["sections", "--targets", str(TARGETS_PATH)]) == 0
+    assert capsys.readouterr().out == "filled=0\n"
 
 
 @pytest.mark.parametrize(

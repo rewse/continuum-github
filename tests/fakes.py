@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from continuum_scan.bedrock import Purpose
 from continuum_scan.codereview import StartResult
 from continuum_scan.config import Repository
 from continuum_scan.config import Site
@@ -138,26 +139,34 @@ class FakePentest:
         return self._results.get(job_id, RevalidationResult("IN_PROGRESS", None))
 
 
-class FakeKiro:
+class FakeModel:
     def __init__(self, answer: str | None) -> None:
         self._answer = answer
         self.prompts: list[str] = []
+        self.purposes: list[str] = []
 
-    def ask(self, prompt: str, resources: Sequence[Path] = ()) -> str | None:
+    def ask(
+        self, prompt: str, purpose: Purpose, resources: Sequence[Path] = ()
+    ) -> str | None:
         self.prompts.append(prompt)
+        self.purposes.append(purpose)
         return self._answer
 
 
-class RecordingKiro:
+class RecordingModel:
     """Returns the given answers in order and records each prompt."""
 
     def __init__(self, answers: Sequence[str | None]) -> None:
         self._answers = list(answers)
         self.prompts: list[str] = []
+        self.purposes: list[str] = []
         self.resources: list[list[Path]] = []
 
-    def ask(self, prompt: str, resources: Sequence[Path] = ()) -> str | None:
+    def ask(
+        self, prompt: str, purpose: Purpose, resources: Sequence[Path] = ()
+    ) -> str | None:
         self.prompts.append(prompt)
+        self.purposes.append(purpose)
         self.resources.append(list(resources))
         return self._answers.pop(0)
 

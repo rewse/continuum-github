@@ -10,14 +10,14 @@ import httpx
 from botocore.exceptions import BotoCoreError
 from botocore.exceptions import ClientError
 
+from continuum_scan.bedrock import ModelLike
+from continuum_scan.bedrock import finding_sections
 from continuum_scan.codereview import StartResult
 from continuum_scan.config import Repository
 from continuum_scan.config import Site
 from continuum_scan.config import Targets
 from continuum_scan.config import code_review_title
 from continuum_scan.config import environment_name
-from continuum_scan.kiro import KiroLike
-from continuum_scan.kiro import finding_sections
 from continuum_scan.models import Detection
 from continuum_scan.models import RevalidationResult
 from continuum_scan.models import Severity
@@ -435,13 +435,13 @@ def fill_sections(
     pentest: PentestLike,
     code_vuln: CodeVulnLike,
     code_review: CodeReviewLike,
-    kiro: KiroLike,
+    model: ModelLike,
     mention: str = "",
 ) -> int:
-    """Has Kiro write the summary sections of open issues that lack them.
+    """Has the model write the summary sections of open issues that lack them.
 
     The rewritten body of an urgent issue starts with mention unless it is
-    empty. Issues whose detection cannot be read, or for which Kiro gives no
+    empty. Issues whose detection cannot be read, or for which the model gives no
     valid answer, are left for a later run. Returns the number of issues
     filled.
     """
@@ -464,7 +464,7 @@ def fill_sections(
         )
         if detection is None:
             continue
-        sections = finding_sections(kiro, detection)
+        sections = finding_sections(model, detection)
         if sections is None:
             continue
         state = dataclasses.replace(state, sections=True)

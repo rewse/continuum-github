@@ -11,7 +11,7 @@ from botocore.exceptions import EndpointConnectionError
 from fakes import FakeCodeReview
 from fakes import FakeCodeVuln
 from fakes import FakeGitHub
-from fakes import FakeKiro
+from fakes import FakeModel
 from fakes import FakePentest
 
 from continuum_scan.config import Repository
@@ -660,9 +660,9 @@ def test_fill_sections_updates_only_unfilled_open_issues() -> None:
         ]
     )
     pentest = FakePentest(scans={}, detections={"f1": _det("k1")})
-    kiro = FakeKiro('{"summary": "S", "why": "W", "risk": "R"}')
+    model = FakeModel('{"summary": "S", "why": "W", "risk": "R"}')
     assert (
-        fill_sections(TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview(), kiro)
+        fill_sections(TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview(), model)
         == 1
     )
     assert list(github.bodies) == [1]
@@ -675,9 +675,9 @@ def test_fill_sections_keeps_the_recorded_state() -> None:
         issues=[_issue_item(1, keys=("k1", "k0"), finding_ids=("f0", "f1"), misses=1)]
     )
     pentest = FakePentest(scans={}, detections={"f0": _det("k1")})
-    kiro = FakeKiro('{"summary": "S", "why": "W", "risk": "R"}')
+    model = FakeModel('{"summary": "S", "why": "W", "risk": "R"}')
     assert (
-        fill_sections(TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview(), kiro)
+        fill_sections(TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview(), model)
         == 1
     )
     state = _state(github.bodies[1])
@@ -692,13 +692,13 @@ def test_fill_sections_skips_missing_detections_and_failed_answers() -> None:
     missing = FakePentest(scans={})
     assert (
         fill_sections(
-            TARGETS, github, missing, FakeCodeVuln(), FakeCodeReview(), FakeKiro("{}")
+            TARGETS, github, missing, FakeCodeVuln(), FakeCodeReview(), FakeModel("{}")
         )
         == 0
     )
     assert (
         fill_sections(
-            TARGETS, github, found, FakeCodeVuln(), FakeCodeReview(), FakeKiro(None)
+            TARGETS, github, found, FakeCodeVuln(), FakeCodeReview(), FakeModel(None)
         )
         == 0
     )

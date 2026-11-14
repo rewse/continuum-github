@@ -55,8 +55,8 @@ def test_load_settings_defaults_and_requirements() -> None:
     assert settings.region == "us-east-1"
     assert settings.report_repository == "o/r"
     assert settings.mention == ""
-    assert settings.kiro_cli == Path.home() / ".local/bin/kiro-cli"
-    assert settings.kiro_model is None
+    assert settings.bedrock_model_id is None
+    assert settings.bedrock_region == "us-east-1"
     assert settings.visual_explainer_dir == Path(
         "node_modules/visual-explainer/plugins/visual-explainer"
     )
@@ -106,8 +106,8 @@ def test_load_settings_overrides() -> None:
             "AGENT_SPACE_ID": "as-1",
             "AWS_REGION": "ap-northeast-1",
             "GITHUB_TOKEN": "t",
-            "KIRO_CLI": "/opt/kiro-cli",
-            "KIRO_MODEL": "m",
+            "BEDROCK_MODEL_ID": "m",
+            "BEDROCK_REGION": "us-west-2",
             "MENTION": "@octocat",
             "REPORT_REPOSITORY": "o/r",
             "VISUAL_EXPLAINER_DIR": "/ve",
@@ -118,23 +118,22 @@ def test_load_settings_overrides() -> None:
         region="ap-northeast-1",
         report_repository="o/r",
         github_token="t",
-        kiro_cli=Path("/opt/kiro-cli"),
-        kiro_model="m",
+        bedrock_model_id="m",
+        bedrock_region="us-west-2",
         mention="@octocat",
         visual_explainer_dir=Path("/ve"),
     )
 
 
-def test_load_settings_treats_empty_kiro_model_as_none() -> None:
-    settings = load_settings(
-        {
-            "AGENT_SPACE_ID": "as-1",
-            "GITHUB_TOKEN": "t",
-            "KIRO_MODEL": "",
-            "REPORT_REPOSITORY": "o/r",
-        }
+def test_load_settings_reads_the_bedrock_settings() -> None:
+    env = {"AGENT_SPACE_ID": "as-1", "GITHUB_TOKEN": "t", "REPORT_REPOSITORY": "o/r"}
+    off = load_settings(
+        {**env, "AWS_REGION": "eu-west-1", "BEDROCK_MODEL_ID": "", "BEDROCK_REGION": ""}
     )
-    assert settings.kiro_model is None
+    assert off.bedrock_model_id is None
+    assert off.bedrock_region == "eu-west-1"
+    on = load_settings({**env, "BEDROCK_MODEL_ID": "m1", "BEDROCK_REGION": "us-west-2"})
+    assert (on.bedrock_model_id, on.bedrock_region) == ("m1", "us-west-2")
 
 
 def test_code_review_title_replaces_characters_security_agent_rejects() -> None:

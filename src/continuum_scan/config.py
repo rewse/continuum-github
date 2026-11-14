@@ -47,8 +47,8 @@ class Settings:
     region: str
     report_repository: str
     github_token: str
-    kiro_cli: Path
-    kiro_model: str | None
+    bedrock_model_id: str | None
+    bedrock_region: str
     mention: str
     visual_explainer_dir: Path
 
@@ -88,15 +88,17 @@ def _require(env: Mapping[str, str], key: str) -> str:
 
 def load_settings(env: Mapping[str, str]) -> Settings:
     """Reads settings from the environment."""
-    kiro_cli = env.get("KIRO_CLI")
     visual_explainer_dir = env.get("VISUAL_EXPLAINER_DIR")
+    region = env.get("AWS_REGION") or DEFAULT_REGION
     return Settings(
         agent_space_id=_require(env, "AGENT_SPACE_ID"),
-        region=env.get("AWS_REGION") or DEFAULT_REGION,
+        region=region,
         report_repository=_require(env, "REPORT_REPOSITORY"),
         github_token=_require(env, "GITHUB_TOKEN"),
-        kiro_cli=Path(kiro_cli) if kiro_cli else Path.home() / ".local/bin/kiro-cli",
-        kiro_model=env.get("KIRO_MODEL") or None,
+        # An unset workflow variable arrives as an empty string and turns
+        # the model off.
+        bedrock_model_id=env.get("BEDROCK_MODEL_ID") or None,
+        bedrock_region=env.get("BEDROCK_REGION") or region,
         mention=env.get("MENTION", ""),
         visual_explainer_dir=(
             Path(visual_explainer_dir)
