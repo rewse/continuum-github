@@ -54,6 +54,11 @@ continuum-github は、issue の 3 つの節（Summary、Why it matters、Risk i
   - issue の本文は、今の表と詳細のブロックだけにする。Summary、Why it matters、Risk if left unresolved の見出しは置かない。詳細は今と同じく折りたたんだまま。
   - `sync` アクションは節を書く手順（`continuum-scan sections`）を飛ばす。
   - 週次レポートの本文から、重大度ごとの要約の節と「Japanese visual report」の行を除く。`report` アクションは HTML の生成とアップロードの手順を飛ばし、出力 `html-url` は空になる。
+- オンのときにモデルの呼び出しが再試行しても失敗したら、その項目だけをオフのときと同じ形にする。
+  - issue の節: 見出しを置かない本文で issue を作る（または今の本文のままにする）。次の sync が、節のない開いた issue としてもう一度書かせる。今の「節の見出しの下に書き込み待ちの文を置く」形はやめる。
+  - 重大度ごとの要約: 失敗した重大度の要約を本文から除く。すべて失敗したら、要約の節そのものがオフのときと同じくなくなる。今の `_Summary unavailable this week._` は出さない。
+  - HTML レポート: 書き直しの 1 回を含めて失敗したら、HTML の行を本文から除き、アーティファクトをアップロードしない。今の `unavailable this week` は出さない。
+  - 失敗したことは、エラーコードと用途だけをログに出す（エージェントの判断の節）。
 - オフからオンに切り替えたあとの sync は、節のない開いた issue に 3 つの節を書き足す。今の「書き漏れは後の実行で埋める」仕組みを、見出しのない本文にも広げる。オンからオフに切り替えても、書いた節は消さない。
 - アクションの入力 `bedrock-region` を足し、環境変数 `BEDROCK_REGION` で渡す。空なら `aws-region` を使う。Agent Space が US 以外のリージョンにある利用者は、`bedrock-region` を US のリージョンにするか、自分のリージョンで呼べるモデル ID（`eu.` や `apac.` の推論プロファイルなど）を `bedrock-model-id` に渡す。`docs/setup.md` にこの選び方を書く。
 - アクションから `kiro-api-key` 入力、Kiro CLI のインストール手順、`KIRO_API_KEY` の受け渡しを消す。`sync` アクションの `needs-sections` で節の書き込みを飛ばす仕組みは、オンのときのために残す。
@@ -68,7 +73,7 @@ continuum-github は、issue の 3 つの節（Summary、Why it matters、Risk i
 - docs で勧めるモデルは `us.anthropic.claude-sonnet-5-5` にした。US の推論プロファイルなので、処理は US のリージョンにとどまる。HTML のページソースを書けるだけの出力の長さがあり、Opus より安い。
 - `converse` の `maxTokens` は、節と要約では小さく、ページソースでは大きくする。正確な値はビルダーが決める。
 - boto3 の読み取りタイムアウトは、今の Kiro のタイムアウトと同じ 600 秒にする。既定の 60 秒では、ページソースの生成が終わる前に切れるおそれがある。
-- `Throttling` などの再試行は boto3 の再試行設定（`retries` の `mode: standard`）に任せ、独自の再試行は書かない。
+- 再試行は boto3 の再試行設定（`retries` の `mode: standard`、最大 3 回）に任せ、独自の再試行は書かない。`Throttling` やサーバー側の一時的なエラーはこれで再試行される。`ValidationException` や `AccessDeniedException` のような設定の誤りと、形式が正しくない応答（JSON が読めない、文字数の上限を超えるなど）は再試行しない。何度呼んでも同じ結果になりやすく、HTML の書き直しの 1 回以外はすぐにフォールバックしたほうが実行時間を延ばさないからだ。
 - モデルの呼び出しが失敗したときは、ログに例外のエラーコード（`ValidationException` など）と、どの用途（節、要約、ページ）で失敗したかだけを出す。今の Kiro は失敗を `None` で返すだけでログに何も出ないが、利用者がモデルやリージョンを選ぶようになると設定の誤りが起きやすくなり、原因がわからないままになるからだ。メッセージ本文はプロンプトの一部を含むことがあるので出さない。
 - ページソースの `maxTokens` は入力にしない。`docs/setup.md` に、ページソースを書くには大きな出力の長さが要ることと、勧めるモデルで動作を確かめたことを書く。出力の上限が小さいモデルでは `ValidationException` になり、上の失敗のログでわかる。
 
