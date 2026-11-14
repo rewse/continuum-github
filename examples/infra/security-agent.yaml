@@ -1,0 +1,347 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Example AWS Security Agent space with one weekly pentest of www.example.com,
+  its schedule, and the AWS Config recording and collector role that Continuum
+  code-vuln reads. Adapt the repositories, sites, and pentests to targets.toml.
+
+Parameters:
+  AgentSpaceName:
+    Type: String
+    Default: example-org
+    AllowedPattern: "[A-Za-z0-9_-]+"
+    Description: Name of the Agent Space. The service role name and log groups use it.
+  GitHubIntegrationId:
+    Type: String
+    MinLength: 1
+    Description: >-
+      ID of the GitHub integration created by installing the AWS Security
+      Agent GitHub App in the console.
+  GitHubOwner:
+    Type: String
+    Default: example-org
+    Description: GitHub owner of the connected repositories, the owner in targets.toml.
+  TargetDomainsVerified:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"
+    Description: >-
+      Set to "true" once every target domain shows VERIFIED. While "false",
+      the pentests and their schedules are not created.
+  WebResourceId:
+    Type: String
+    MinLength: 1
+    Default: pending
+    Description: >-
+      providerResourceId of the web repository in the GitHub integration, as
+      returned by ListIntegratedResources. Only the pentest uses it.
+
+# Only the pentests and their schedules depend on verified domains. IAM
+# resources stay unconditional, so the deployment that sets
+# TargetDomainsVerified to "true" changes no IAM resource.
+Conditions:
+  CreatePentests: !Equals
+    - !Ref TargetDomainsVerified
+    - "true"
+
+Resources:
+  # Agent Space service role. A pentest requires one; the policy mirrors the
+  # base policy that the console generates, with secret access limited to the
+  # actor secrets so that a pentest cannot read unrelated secrets.
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub continuum-${AgentSpaceName}
+      Path: /service-role/
+      Description: Assumed by AWS Security Agent for the Agent Space.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: securityagent.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:securityagent:${AWS::Region}:${AWS::AccountId}:agent-space/*
+      Policies:
+        - PolicyName: continuum-base
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:SimulatePrincipalPolicy
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/service-role/continuum-${AgentSpaceName}
+              - Effect: Allow
+                Action:
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:continuum/actor-*
+              # Security Agent writes job logs to
+              # /aws/securityagent/<Agent Space name>/<pentest or code review ID>.
+              - Effect: Allow
+                Action: logs:CreateLogGroup
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/securityagent/${AgentSpaceName}*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/securityagent/${AgentSpaceName}*:log-stream:*
+
+  # Data access role of the code-vuln collector, which continuum-scan setup
+  # code-vuln creates through the API because the collector has no
+  # CloudFormation resource type.
+  CollectorAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Assumed by Continuum to read the AWS Config data of this account.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: continuum.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:continuum:${AWS::Region}:${AWS::AccountId}:environments/*
+      Policies:
+        - PolicyName: collector-data-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: continuum:GetCollectorDataAccessAuthorization
+                Resource: !Sub arn:${AWS::Partition}:continuum:${AWS::Region}:${AWS::AccountId}:collectors/*
+
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Assumed by EventBridge Scheduler to start the weekly pentests.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                # Scheduler sets aws:SourceArn to the schedule group ARN,
+                # not the schedule ARN.
+                aws:SourceArn: !Sub arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule-group/continuum
+      Policies:
+        - PolicyName: start-pentest-job
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: securityagent:StartPentestJob
+                Resource: !Sub arn:${AWS::Partition}:securityagent:${AWS::Region}:${AWS::AccountId}:agent-space/${AgentSpace.AgentSpaceId}
+
+  # AWS Config recording in this Region, which the code-vuln collector reads.
+  # A Region holds one recorder and one delivery channel; if AWS Config
+  # already records here, remove these resources. The recorder uses the
+  # service-linked role AWSServiceRoleForConfig, which must exist first.
+  # Retain keeps the configuration history if the stack is deleted.
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # The statements that the AWS Config documentation requires for delivery
+  # to an S3 bucket in the same account.
+  ConfigBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ConfigBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSConfigBucketPermissionsCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt ConfigBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: AWSConfigBucketExistenceCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:ListBucket
+            Resource: !GetAtt ConfigBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: AWSConfigBucketDelivery
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub ${ConfigBucket.Arn}/AWSLogs/${AWS::AccountId}/Config/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                s3:x-amz-acl: bucket-owner-full-control
+
+  ConfigRecorder:
+    Type: AWS::Config::ConfigurationRecorder
+    Properties:
+      Name: default
+      RoleARN: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig
+      RecordingGroup:
+        AllSupported: true
+        IncludeGlobalResourceTypes: true
+
+  ConfigDeliveryChannel:
+    Type: AWS::Config::DeliveryChannel
+    # The recorder's create handler waits until StartConfigurationRecorder
+    # succeeds, which needs this channel, so depending on ConfigRecorder
+    # deadlocks. PutDeliveryChannel still needs the recorder to exist; the
+    # recorder handler calls PutConfigurationRecorder at once, well before
+    # the bucket and its policy are ready.
+    DependsOn: ConfigBucketPolicy
+    Properties:
+      S3BucketName: !Ref ConfigBucket
+
+  # One target domain per site in targets.toml, verified by a DNS TXT record.
+  TargetDomainWww:
+    Type: AWS::SecurityAgent::TargetDomain
+    Properties:
+      TargetDomainName: www.example.com
+      VerificationMethod: DNS_TXT
+
+  # Retain keeps the findings history if the stack is deleted.
+  AgentSpace:
+    Type: AWS::SecurityAgent::AgentSpace
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Ref AgentSpaceName
+      Description: Weekly pentests, code reviews, and PR reviews.
+      AwsResources:
+        IamRoles:
+          - !GetAtt ServiceRole.Arn
+      CodeReviewSettings:
+        ControlsScanning: true
+        GeneralPurposeScanning: true
+      TargetDomainIds:
+        - !GetAtt TargetDomainWww.TargetDomainId
+      # Security Agent rejects PR comments on public repositories, so only the
+      # private ones have LeaveComments: true. A stack update can reset these
+      # capabilities, so run continuum-scan setup pr-review after every
+      # update. Keep this list in sync with targets.toml.
+      IntegratedResources:
+        - Integration: !Ref GitHubIntegrationId
+          ProviderResources:
+            - GitHubRepository:
+                Name: api
+                Owner: !Ref GitHubOwner
+              GitHubCapabilities:
+                LeaveComments: true
+                RemediateCode: false
+            - GitHubRepository:
+                Name: web
+                Owner: !Ref GitHubOwner
+              GitHubCapabilities:
+                LeaveComments: false
+                RemediateCode: false
+
+  # One pentest per site, each started in its own weekly slot, so a failure
+  # at one site does not stop the others. The title must match the pentest
+  # of the site in targets.toml. The pentest reads the repository that builds
+  # the site as source code context.
+  #
+  # A site that needs sign-in gets an actor under Assets.Actors: an
+  # Identifier, a Description of how to sign in, the Uris it applies to, and
+  # Authentication with ProviderType SECRETS_MANAGER and the name of a secret
+  # matching continuum/actor-*, which holds the username and password of a
+  # read-only account. ExcludeRiskTypes leaves out the risk types whose probes
+  # could change data or availability on a live service, such as
+  # ARBITRARY_FILE_UPLOAD, DATABASE_MODIFICATION, DENIAL_OF_SERVICE,
+  # FILE_CREATION, and FILE_DELETION. If the site bans clients by rate,
+  # NetworkTrafficConfig.CustomHeaders can send a header with a secret value
+  # that the site recognizes.
+  PentestWww:
+    Type: AWS::SecurityAgent::Pentest
+    Condition: CreatePentests
+    Properties:
+      AgentSpaceId: !GetAtt AgentSpace.AgentSpaceId
+      Title: weekly-www-example-com
+      ServiceRole: !GetAtt ServiceRole.Arn
+      CodeRemediationStrategy: DISABLED
+      ExcludeRiskTypes:
+        - DENIAL_OF_SERVICE
+      Assets:
+        Endpoints:
+          - Uri: https://www.example.com/
+        IntegratedRepositories:
+          - IntegrationId: !Ref GitHubIntegrationId
+            ProviderResourceId: !Ref WebResourceId
+            Branch: main
+
+  # Security Agent has no API or CloudFormation property for pentest
+  # schedules, so each schedule calls StartPentestJob through an EventBridge
+  # Scheduler universal target. Do not also schedule the pentest in the
+  # Security Agent web application, or it starts twice a week.
+  ScheduleGroup:
+    Type: AWS::Scheduler::ScheduleGroup
+    Properties:
+      Name: continuum
+
+  ScheduleWww:
+    Type: AWS::Scheduler::Schedule
+    Condition: CreatePentests
+    Properties:
+      Name: continuum-weekly-www-example-com
+      GroupName: !Ref ScheduleGroup
+      Description: Starts the www.example.com pentest at 09:15 UTC every Saturday.
+      ScheduleExpression: cron(15 9 ? * SAT *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: !Sub arn:${AWS::Partition}:scheduler:::aws-sdk:securityagent:startPentestJob
+        RoleArn: !GetAtt SchedulerRole.Arn
+        # Universal targets take the SDK request members in PascalCase.
+        Input: !Sub
+          - '{"AgentSpaceId": "${AgentSpaceId}", "PentestId": "${PentestId}"}'
+          - AgentSpaceId: !GetAtt AgentSpace.AgentSpaceId
+            PentestId: !GetAtt PentestWww.PentestId
+        # StartPentestJob is not idempotent, so a retry after a call that
+        # timed out but succeeded would start a second job.
+        RetryPolicy:
+          MaximumRetryAttempts: 0
+
+Outputs:
+  AgentSpaceId:
+    Description: Repository variable AGENT_SPACE_ID and AgentSpaceId of github-actions-role.yaml.
+    Value: !GetAtt AgentSpace.AgentSpaceId
+  CollectorAccessRoleArn:
+    Description: Data access role that continuum-scan setup code-vuln gives the collector.
+    Value: !GetAtt CollectorAccessRole.Arn
+  ServiceRoleArn:
+    Description: Service role that continuum-scan setup code-review gives the code reviews.
+    Value: !GetAtt ServiceRole.Arn

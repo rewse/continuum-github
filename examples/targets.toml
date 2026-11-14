@@ -1,0 +1,23 @@
+# Scan targets. Copy this file to the root of the repository that holds the
+# finding issues, or pass its path through the actions' `targets` input.
+
+# GitHub owner of the scanned repositories. Continuum environment names are
+# "<owner>-<repository>".
+owner = "example-org"
+
+# Every repository connected to the Agent Space. Private repositories get
+# code-vuln scans and PR review comments; public ones get a code review.
+[[repositories]]
+name = "api"
+private = true
+
+[[repositories]]
+name = "web"
+private = false
+
+# Each site is matched to its pentest by title. Findings of the pentest are
+# filed under the repository named here, which must also be listed above.
+[[sites]]
+domain = "www.example.com"
+pentest = "weekly-www-example-com"
+repository = "web"

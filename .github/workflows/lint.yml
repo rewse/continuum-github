@@ -39,3 +39,6 @@ jobs:
           # zizmor runs its online audits, such as impostor-commit, with a token.
           GH_TOKEN: ${{ github.token }}
         run: uvx --with pre-commit-uv==4.3.0 pre-commit@4.6.2 run --all-files --show-diff-on-failure
+
+      - name: Run cfn-lint
+        run: uv run cfn-lint examples/infra/*.yaml

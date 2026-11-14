@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Example GitHub OIDC provider and IAM role that the continuum-github sync and
+  report actions run under. The role trusts only the main branch of the
+  repository that holds the finding issues.
+
+Parameters:
+  AgentSpaceId:
+    Type: String
+    MinLength: 1
+    Description: ID of the AWS Security Agent space that the actions read.
+  GitHubOwner:
+    Type: String
+    MinLength: 1
+    Description: GitHub owner of the repository that runs the workflows.
+  GitHubOwnerId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+    Description: Numeric ID of GitHubOwner.
+  GitHubRepository:
+    Type: String
+    MinLength: 1
+    Description: Name of the repository that runs the workflows.
+  GitHubRepositoryId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+    Description: Numeric ID of GitHubRepository.
+
+Resources:
+  # An account holds only one OIDC provider per URL. If the account already
+  # has one for GitHub Actions, remove this resource and reference the
+  # existing provider's ARN in the trust policy instead.
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Assumed by the main-branch workflows that sync findings into GitHub issues.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !GetAtt GitHubOidcProvider.Arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # The subject embeds the owner and repository IDs, which
+                # GitHub never reuses, so a renamed or recreated repository
+                # cannot assume the role. The repository must use GitHub's
+                # immutable OIDC subject format.
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:ref:refs/heads/main
+      Policies:
+        - PolicyName: continuum-scan
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # The Service Authorization Reference lists the AgentSpace
+              # resource type for each of these actions, so they can be
+              # scoped to one Agent Space.
+              - Effect: Allow
+                Action:
+                  - securityagent:BatchGetFindings
+                  - securityagent:BatchGetPentestJobs
+                  - securityagent:ListCodeReviewJobsForCodeReview
+                  - securityagent:ListCodeReviews
+                  - securityagent:ListFindings
+                  - securityagent:ListPentestJobsForPentest
+                  - securityagent:ListPentests
+                  - securityagent:StartCodeReviewJob
+                  - securityagent:StartPentestJob
+                Resource: !Sub arn:${AWS::Partition}:securityagent:${AWS::Region}:${AWS::AccountId}:agent-space/${AgentSpaceId}
+              # Read-only access to the code-vuln findings of the
+              # environments in this account and Region.
+              - Effect: Allow
+                Action:
+                  - continuum:GetCodeIssue
+                  - continuum:ListCodeFindings
+                  - continuum:ListCodeIssues
+                  - continuum:ListCodeScans
+                  - continuum:ListEnvironments
+                Resource: !Sub arn:${AWS::Partition}:continuum:${AWS::Region}:${AWS::AccountId}:environments/*
+
+Outputs:
+  GitHubActionsRoleArn:
+    Description: Repository variable AWS_ROLE_ARN.
+    Value: !GetAtt GitHubActionsRole.Arn

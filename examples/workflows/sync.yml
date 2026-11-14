@@ -1,0 +1,46 @@
+name: Sync findings
+
+on:
+  schedule:
+    # Every two hours at minute 7.
+    - cron: "7 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The report workflow shares this group, so the two never write issues at once.
+concurrency:
+  group: continuum-github
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync findings
+    # The IAM role trust policy accepts only the main branch.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd  # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # Replace the SHA and the version with those of a continuum-github release.
+      - name: Sync findings
+        uses: rewse/continuum-github/sync@0000000000000000000000000000000000000000  # vX.Y.Z
+        with:
+          agent-space-id: ${{ vars.AGENT_SPACE_ID }}
+          kiro-api-key: ${{ secrets.KIRO_API_KEY }}
+          mention: ${{ vars.MENTION }}
