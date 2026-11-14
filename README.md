@@ -274,7 +274,7 @@ When a scan changes a finding's severity or validation result, sync updates the 
 
 code-review findings carry no ID that stays the same across runs, so sync matches them by code review, risk type, name (ignoring case and runs of spaces), and the path of the first code location. A finding that a later run names differently becomes a new issue, and the old one closes after two misses.
 
-Sync reads state only from issues that `github-actions[bot]` created, and ignores hidden markers in anyone else's issues. Create the labels with `continuum-scan setup labels` before the first run, as [docs/setup.md](docs/setup.md) describes, because GitHub can drop a label that the token is not allowed to create.
+Sync reads state only from issues that `github-actions[bot]` created, and ignores hidden markers in anyone else's issues. Create the labels with `continuum-github setup labels` before the first run, as [docs/setup.md](docs/setup.md) describes, because GitHub can drop a label that the token is not allowed to create.
 
 ## Weekly report
 
@@ -288,7 +288,7 @@ A code review is due when it has no running job and no completed job that starte
 
 ## Confidentiality
 
-The issues and the report artifact hold details of vulnerabilities that may not be fixed yet, so keep the report repository private. The `continuum-scan` CLI prints only counts and target names to the workflow log. Finding details go to the issues and, inside the job, to the Bedrock model. Do not echo them in your own workflow steps, and do not copy them to public repositories.
+The issues and the report artifact hold details of vulnerabilities that may not be fixed yet, so keep the report repository private. The `continuum-github` CLI prints only counts and target names to the workflow log. Finding details go to the issues and, inside the job, to the Bedrock model. Do not echo them in your own workflow steps, and do not copy them to public repositories.
 
 ## Development
 

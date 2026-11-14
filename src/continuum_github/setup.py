@@ -2,11 +2,11 @@
 
 from typing import Any
 
-from continuum_scan.config import Repository
-from continuum_scan.config import Targets
-from continuum_scan.config import code_review_title
-from continuum_scan.config import environment_name
-from continuum_scan.render import site_label
+from continuum_github.config import Repository
+from continuum_github.config import Targets
+from continuum_github.config import code_review_title
+from continuum_github.config import environment_name
+from continuum_github.render import site_label
 
 COLLECTOR_CLIENT_TOKEN = "continuum-collector"
 SCAN_FREQUENCY = "P7D"

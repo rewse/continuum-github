@@ -11,18 +11,18 @@ from botocore.stub import ANY
 from botocore.stub import Stubber
 from fakes import TARGETS_PATH
 
-from continuum_scan import cli
-from continuum_scan.config import Repository
-from continuum_scan.config import Site
-from continuum_scan.config import Targets
-from continuum_scan.config import load_targets
-from continuum_scan.setup import configure_pr_review
-from continuum_scan.setup import ensure_code_reviews
-from continuum_scan.setup import ensure_collector
-from continuum_scan.setup import ensure_environments
-from continuum_scan.setup import environment_configuration
-from continuum_scan.setup import label_definitions
-from continuum_scan.setup import pr_review_items
+from continuum_github import cli
+from continuum_github.config import Repository
+from continuum_github.config import Site
+from continuum_github.config import Targets
+from continuum_github.config import load_targets
+from continuum_github.setup import configure_pr_review
+from continuum_github.setup import ensure_code_reviews
+from continuum_github.setup import ensure_collector
+from continuum_github.setup import ensure_environments
+from continuum_github.setup import environment_configuration
+from continuum_github.setup import label_definitions
+from continuum_github.setup import pr_review_items
 
 ACCOUNT = "111122223333"
 COLLECTOR_ARN = f"arn:aws:continuum:us-east-1:{ACCOUNT}:collectors/c1"

@@ -12,16 +12,16 @@ from fakes import FakeCodeVuln
 from fakes import FakeGitHub
 from fakes import FakePentest
 
-from continuum_scan import cli
-from continuum_scan.config import Repository
-from continuum_scan.config import Site
-from continuum_scan.config import Targets
-from continuum_scan.config import load_settings
-from continuum_scan.models import CompletedScan
-from continuum_scan.models import Detection
-from continuum_scan.models import Severity
-from continuum_scan.models import TargetScan
-from continuum_scan.sync import SyncCounts
+from continuum_github import cli
+from continuum_github.config import Repository
+from continuum_github.config import Site
+from continuum_github.config import Targets
+from continuum_github.config import load_settings
+from continuum_github.models import CompletedScan
+from continuum_github.models import Detection
+from continuum_github.models import Severity
+from continuum_github.models import TargetScan
+from continuum_github.sync import SyncCounts
 
 DAY1 = datetime(2026, 11, 1, tzinfo=UTC)
 

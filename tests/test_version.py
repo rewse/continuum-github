@@ -4,10 +4,10 @@ import re
 import tomllib
 from pathlib import Path
 
-import continuum_scan
+import continuum_github
 
 ROOT = Path(__file__).parent.parent
-VERSION_FILE = ROOT / "src" / "continuum_scan" / "__init__.py"
+VERSION_FILE = ROOT / "src" / "continuum_github" / "__init__.py"
 
 
 def test_package_version_is_the_line_the_bump_script_rewrites() -> None:
@@ -16,7 +16,7 @@ def test_package_version_is_the_line_the_bump_script_rewrites() -> None:
     (version,) = re.findall(
         r'^__version__ = "(\d+\.\d+\.\d+)"$', VERSION_FILE.read_text(), re.MULTILINE
     )
-    assert continuum_scan.__version__ == version
+    assert continuum_github.__version__ == version
 
 
 def test_pyproject_reads_the_version_from_the_module() -> None:
@@ -24,5 +24,5 @@ def test_pyproject_reads_the_version_from_the_module() -> None:
     assert "version" not in project["project"]
     assert project["project"]["dynamic"] == ["version"]
     assert project["tool"]["hatch"]["version"] == {
-        "path": "src/continuum_scan/__init__.py"
+        "path": "src/continuum_github/__init__.py"
     }

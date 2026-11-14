@@ -8,13 +8,13 @@ from botocore.exceptions import ClientError
 from botocore.exceptions import ReadTimeoutError
 from fakes import FakeModel
 
-from continuum_scan.bedrock import SYSTEM_PROMPT
-from continuum_scan.bedrock import Bedrock
-from continuum_scan.bedrock import bedrock_client
-from continuum_scan.bedrock import finding_sections
-from continuum_scan.models import Detection
-from continuum_scan.models import Severity
-from continuum_scan.render import Sections
+from continuum_github.bedrock import SYSTEM_PROMPT
+from continuum_github.bedrock import Bedrock
+from continuum_github.bedrock import bedrock_client
+from continuum_github.bedrock import finding_sections
+from continuum_github.models import Detection
+from continuum_github.models import Severity
+from continuum_github.render import Sections
 
 DETECTION = Detection(
     source="pentest",

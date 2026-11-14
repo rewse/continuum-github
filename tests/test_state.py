@@ -2,10 +2,10 @@
 
 from dataclasses import replace
 
-from continuum_scan.state import IssueState
-from continuum_scan.state import parse_state
-from continuum_scan.state import render_state
-from continuum_scan.state import replace_state
+from continuum_github.state import IssueState
+from continuum_github.state import parse_state
+from continuum_github.state import render_state
+from continuum_github.state import replace_state
 
 STATE = IssueState(
     source="pentest",

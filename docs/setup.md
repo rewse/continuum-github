@@ -4,14 +4,14 @@ This guide connects AWS Security Agent and AWS Continuum in one AWS account to a
 
 Most steps write to AWS or GitHub, so read what a step changes before running it. You need the AWS CLI 2.37.12 or later, `uv`, and `gh`. Run the commands from the root of a checkout of your report repository. Steps 3 and 4 create IAM resources, so they need credentials that may do that.
 
-The `continuum-scan setup` commands run from a release of this repository through `uvx`. Set `SHA` to the commit SHA of the release you use:
+The `continuum-github setup` commands run from a release of this repository through `uvx`. Set `SHA` to the commit SHA of the release you use:
 
 ```sh
 SHA=<release commit SHA>
 export AWS_REGION=us-east-1
 ```
 
-`continuum-scan setup` reads the Region from `AWS_REGION` and uses `us-east-1` when it is unset. It ignores the Region of your AWS CLI profile, so export `AWS_REGION` with the Region of your Agent Space in the shell that runs steps 5 to 7.
+`continuum-github setup` reads the Region from `AWS_REGION` and uses `us-east-1` when it is unset. It ignores the Region of your AWS CLI profile, so export `AWS_REGION` with the Region of your Agent Space in the shell that runs steps 5 to 7.
 
 ## 1. Write the targets file
 
@@ -119,7 +119,7 @@ aws continuum list-integrations --region us-east-1 \
 Then create the environments:
 
 ```sh
-uvx --from "git+https://github.com/rewse/continuum-github@$SHA" continuum-scan setup code-vuln \
+uvx --from "git+https://github.com/rewse/continuum-github@$SHA" continuum-github setup code-vuln \
   --integration-id <Continuum integration ID> \
   --collector-repository api \
   --collector-role-arn <CollectorAccessRoleArn>
@@ -133,7 +133,7 @@ The command creates or updates one environment per private repository, named `<o
 
 ```sh
 AGENT_SPACE_ID=<AgentSpaceId> uvx --from "git+https://github.com/rewse/continuum-github@$SHA" \
-  continuum-scan setup code-review \
+  continuum-github setup code-review \
   --integration-id <Security Agent integration ID> \
   --service-role-arn <ServiceRoleArn>
 ```
@@ -144,7 +144,7 @@ The command creates one code review per public repository in the Agent Space, ti
 
 ```sh
 AGENT_SPACE_ID=<AgentSpaceId> uvx --from "git+https://github.com/rewse/continuum-github@$SHA" \
-  continuum-scan setup pr-review \
+  continuum-github setup pr-review \
   --integration-id <Security Agent integration ID>
 ```
 
@@ -154,7 +154,7 @@ The command sends all repositories in one `UpdateIntegratedResources` call. It t
 
 ```sh
 GITHUB_TOKEN="$(gh auth token)" REPORT_REPOSITORY=example-org/security-findings \
-  uvx --from "git+https://github.com/rewse/continuum-github@$SHA" continuum-scan setup labels
+  uvx --from "git+https://github.com/rewse/continuum-github@$SHA" continuum-github setup labels
 ```
 
 The command creates the state, severity, source, `urgent`, `weekly-report`, `repo:<name>`, and `site:<domain>` labels in the report repository, skipping the ones that exist. Create them before the first sync, because GitHub can drop a label that the token is not allowed to create. Rerun it after adding a repository or a site to `targets.toml`.

@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from continuum_scan.github import GitHub
+from continuum_github.github import GitHub
 
 
 def _client(handler) -> httpx.Client:
@@ -312,7 +312,7 @@ def test_secondary_limit_with_retry_after_is_retried() -> None:
 
 def test_429_waits_until_ratelimit_reset(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeTime()
-    monkeypatch.setattr("continuum_scan.github.time.time", lambda: 5000.0)
+    monkeypatch.setattr("continuum_github.github.time.time", lambda: 5000.0)
     calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:

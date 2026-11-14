@@ -3,10 +3,10 @@
 import re
 from dataclasses import dataclass
 
-from continuum_scan.models import Detection
-from continuum_scan.models import Severity
-from continuum_scan.state import IssueState
-from continuum_scan.state import render_state
+from continuum_github.models import Detection
+from continuum_github.models import Severity
+from continuum_github.state import IssueState
+from continuum_github.state import render_state
 
 STATUS_LABELS = frozenset({"new", "pending", "wip"})
 URGENT = "urgent"

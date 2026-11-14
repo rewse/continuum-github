@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 
 SCRIPT = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "bump_version.sh"
-VERSION_FILE = pathlib.Path("src") / "continuum_scan" / "__init__.py"
+VERSION_FILE = pathlib.Path("src") / "continuum_github" / "__init__.py"
 
 # Isolate git from the user's global config, such as commit signing.
 GIT_ENV = dict(

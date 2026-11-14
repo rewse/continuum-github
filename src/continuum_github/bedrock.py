@@ -12,14 +12,14 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError
 from botocore.exceptions import ClientError
 
-from continuum_scan.config import DEFAULT_LANGUAGE
-from continuum_scan.models import Detection
-from continuum_scan.models import Severity
-from continuum_scan.render import Sections
+from continuum_github.config import DEFAULT_LANGUAGE
+from continuum_github.models import Detection
+from continuum_github.models import Severity
+from continuum_github.render import Sections
 
 if TYPE_CHECKING:
     # report imports sync, which imports this module.
-    from continuum_scan.report import WeeklyData
+    from continuum_github.report import WeeklyData
 
 BEGIN = "<<<CONTINUUM-BEGIN>>>"
 END = "<<<CONTINUUM-END>>>"

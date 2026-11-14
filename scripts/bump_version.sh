@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-readonly VERSION_FILE="src/continuum_scan/__init__.py"
+readonly VERSION_FILE="src/continuum_github/__init__.py"
 readonly RELEASE_BRANCH="main"
 
 die() {

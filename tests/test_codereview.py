@@ -7,15 +7,15 @@ import boto3
 import pytest
 from botocore.stub import Stubber
 
-from continuum_scan.codereview import CODE_REVIEW_INTERVAL
-from continuum_scan.codereview import MAX_CONCURRENT_CODE_REVIEWS
-from continuum_scan.codereview import MISSING
-from continuum_scan.codereview import NEVER_RUN
-from continuum_scan.codereview import CodeReviewClient
-from continuum_scan.codereview import StartResult
-from continuum_scan.config import Repository
-from continuum_scan.models import Severity
-from continuum_scan.models import code_review_key
+from continuum_github.codereview import CODE_REVIEW_INTERVAL
+from continuum_github.codereview import MAX_CONCURRENT_CODE_REVIEWS
+from continuum_github.codereview import MISSING
+from continuum_github.codereview import NEVER_RUN
+from continuum_github.codereview import CodeReviewClient
+from continuum_github.codereview import StartResult
+from continuum_github.config import Repository
+from continuum_github.models import Severity
+from continuum_github.models import code_review_key
 
 SPACE = "space-1"
 REPO = Repository("actions", False)

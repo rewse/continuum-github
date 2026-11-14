@@ -4,21 +4,21 @@ from dataclasses import replace
 from datetime import UTC
 from datetime import datetime
 
-from continuum_scan.models import CompletedScan
-from continuum_scan.models import Detection
-from continuum_scan.models import RevalidationResult
-from continuum_scan.models import Severity
-from continuum_scan.models import TargetScan
-from continuum_scan.reconcile import plan_sync
-from continuum_scan.records import Record
-from continuum_scan.render import CLOSED_ABSENT
-from continuum_scan.render import CLOSED_WITHDRAWN
-from continuum_scan.render import REOPENED
-from continuum_scan.render import REVALIDATED_FIXED
-from continuum_scan.render import REVALIDATED_STILL
-from continuum_scan.render import REVALIDATION_FAILED
-from continuum_scan.render import urgent_notice
-from continuum_scan.state import IssueState
+from continuum_github.models import CompletedScan
+from continuum_github.models import Detection
+from continuum_github.models import RevalidationResult
+from continuum_github.models import Severity
+from continuum_github.models import TargetScan
+from continuum_github.reconcile import plan_sync
+from continuum_github.records import Record
+from continuum_github.render import CLOSED_ABSENT
+from continuum_github.render import CLOSED_WITHDRAWN
+from continuum_github.render import REOPENED
+from continuum_github.render import REVALIDATED_FIXED
+from continuum_github.render import REVALIDATED_STILL
+from continuum_github.render import REVALIDATION_FAILED
+from continuum_github.render import urgent_notice
+from continuum_github.state import IssueState
 
 DAY1 = datetime(2026, 11, 1, tzinfo=UTC)
 DAY8 = datetime(2026, 11, 8, tzinfo=UTC)

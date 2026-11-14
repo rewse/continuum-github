@@ -3,9 +3,9 @@
 from datetime import UTC
 from datetime import datetime
 
-from continuum_scan.records import records_from_issues
-from continuum_scan.state import IssueState
-from continuum_scan.state import render_state
+from continuum_github.records import records_from_issues
+from continuum_github.state import IssueState
+from continuum_github.state import render_state
 
 STATE = IssueState(
     source="pentest",

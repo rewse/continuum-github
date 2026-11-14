@@ -14,28 +14,28 @@ from fakes import FakeGitHub
 from fakes import FakeModel
 from fakes import FakePentest
 
-from continuum_scan.config import Repository
-from continuum_scan.config import Site
-from continuum_scan.config import Targets
-from continuum_scan.models import CompletedScan
-from continuum_scan.models import Detection
-from continuum_scan.models import RevalidationResult
-from continuum_scan.models import Severity
-from continuum_scan.models import TargetScan
-from continuum_scan.render import CLOSED_ABSENT
-from continuum_scan.render import FALLBACK_NOTE
-from continuum_scan.render import REOPENED
-from continuum_scan.render import REVALIDATED_FIXED
-from continuum_scan.render import issue_body
-from continuum_scan.state import IssueState
-from continuum_scan.state import parse_state
-from continuum_scan.state import render_state
-from continuum_scan.sync import SyncCounts
-from continuum_scan.sync import collect_scans
-from continuum_scan.sync import fill_sections
-from continuum_scan.sync import full_detection
-from continuum_scan.sync import run_sync
-from continuum_scan.sync import start_code_reviews
+from continuum_github.config import Repository
+from continuum_github.config import Site
+from continuum_github.config import Targets
+from continuum_github.models import CompletedScan
+from continuum_github.models import Detection
+from continuum_github.models import RevalidationResult
+from continuum_github.models import Severity
+from continuum_github.models import TargetScan
+from continuum_github.render import CLOSED_ABSENT
+from continuum_github.render import FALLBACK_NOTE
+from continuum_github.render import REOPENED
+from continuum_github.render import REVALIDATED_FIXED
+from continuum_github.render import issue_body
+from continuum_github.state import IssueState
+from continuum_github.state import parse_state
+from continuum_github.state import render_state
+from continuum_github.sync import SyncCounts
+from continuum_github.sync import collect_scans
+from continuum_github.sync import fill_sections
+from continuum_github.sync import full_detection
+from continuum_github.sync import run_sync
+from continuum_github.sync import start_code_reviews
 
 DAY1 = datetime(2026, 11, 1, tzinfo=UTC)
 DAY8 = datetime(2026, 11, 8, tzinfo=UTC)

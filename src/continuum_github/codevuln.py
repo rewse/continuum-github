@@ -5,12 +5,12 @@ from typing import Any
 
 from botocore.exceptions import ClientError
 
-from continuum_scan.config import Repository
-from continuum_scan.models import CompletedScan
-from continuum_scan.models import Detection
-from continuum_scan.models import Severity
-from continuum_scan.models import TargetScan
-from continuum_scan.models import code_vuln_key
+from continuum_github.config import Repository
+from continuum_github.models import CompletedScan
+from continuum_github.models import Detection
+from continuum_github.models import Severity
+from continuum_github.models import TargetScan
+from continuum_github.models import code_vuln_key
 
 MISSING = "MISSING"
 # An environment that has no code scan at all, as right after it is created.

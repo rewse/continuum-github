@@ -48,7 +48,7 @@ runs:
       shell: bash
       # The targets path is relative to the caller's checkout.
       working-directory: ${{ github.workspace }}
-      run: uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-scan sync --targets "$TARGETS"
+      run: uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-github sync --targets "$TARGETS"
       env:
         AGENT_SPACE_ID: ${{ inputs.agent-space-id }}
         AWS_REGION: ${{ inputs.aws-region }}
@@ -61,7 +61,7 @@ runs:
       if: steps.sync.outputs.needs-sections != '0' && inputs.bedrock-model-id != ''
       shell: bash
       working-directory: ${{ github.workspace }}
-      run: uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-scan sections --targets "$TARGETS"
+      run: uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-github sections --targets "$TARGETS"
       env:
         AGENT_SPACE_ID: ${{ inputs.agent-space-id }}
         AWS_REGION: ${{ inputs.aws-region }}
