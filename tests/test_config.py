@@ -63,10 +63,8 @@ def test_load_settings_defaults_and_requirements() -> None:
 
 
 def test_environment_name_uses_the_owner() -> None:
-    assert (
-        environment_name("rewse", "stock-price-fetcher") == "rewse-stock-price-fetcher"
-    )
     assert environment_name("example-org", "api") == "example-org-api"
+    assert environment_name("example-org", "web-app") == "example-org-web-app"
 
 
 def test_settings_require_the_report_repository() -> None:
