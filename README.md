@@ -28,8 +28,8 @@ Both look for vulnerabilities in a repository's source code and try to exploit w
 
 - An AWS account with AWS Security Agent and AWS Continuum, an Agent Space connected to your repositories through the Security Agent GitHub App, and the code reviews, code-vuln environments, and pentests you want. [examples/infra/](examples/infra/) has CloudFormation templates to start from.
 - An IAM role that GitHub Actions can assume through OIDC, such as the one in [examples/infra/github-actions-role.yaml](examples/infra/github-actions-role.yaml).
-- A Kiro API key. Kiro CLI writes parts of each issue and the weekly report.
 - A private GitHub repository to hold the issues and run the workflows.
+- Optionally, access to a model in Amazon Bedrock. With a model, the actions add a summary and two short explanations to each issue, summarize each severity in the weekly report, and write a Japanese visual report. Without one, the issues and the report hold only what the scans returned.
 
 [docs/setup.md](docs/setup.md) walks through the setup.
 
@@ -72,7 +72,7 @@ jobs:
       - uses: rewse/continuum-github/sync@0000000000000000000000000000000000000000  # vX.Y.Z
         with:
           agent-space-id: ${{ vars.AGENT_SPACE_ID }}
-          kiro-api-key: ${{ secrets.KIRO_API_KEY }}
+          bedrock-model-id: ${{ vars.BEDROCK_MODEL_ID }}
 ```
 
 Add a second workflow that calls the `report` action once a week:
@@ -113,7 +113,7 @@ jobs:
         uses: rewse/continuum-github/report@0000000000000000000000000000000000000000  # vX.Y.Z
         with:
           agent-space-id: ${{ vars.AGENT_SPACE_ID }}
-          kiro-api-key: ${{ secrets.KIRO_API_KEY }}
+          bedrock-model-id: ${{ vars.BEDROCK_MODEL_ID }}
       - name: Link the HTML report
         env:
           HTML_URL: ${{ steps.report.outputs.html-url }}
@@ -128,15 +128,16 @@ Both actions accept these inputs:
 |---|---|---|
 | `agent-space-id` | required | ID of the Security Agent space |
 | `aws-region` | `us-east-1` | Region of the Agent Space and the Continuum environments |
+| `bedrock-model-id` | empty | Bedrock model or inference profile ID, such as `us.anthropic.claude-sonnet-5-5`; empty turns the model off |
+| `bedrock-region` | empty | Region that Bedrock is called in; empty uses `aws-region` |
 | `github-token` | `${{ github.token }}` | Token that reads and writes issues in the report repository; keep the default (see below) |
-| `kiro-api-key` | required | Kiro API key |
 | `mention` | empty | Mention, such as `@example-user`, added to urgent issues; empty adds none |
 | `report-repository` | `${{ github.repository }}` | Repository, as `owner/name`, that holds the issues; keep the default (see below) |
 | `targets` | `targets.toml` | Path of the targets file in the checkout |
 
 Only the defaults of `github-token` and `report-repository` are supported. The actions read their state back only from issues opened by `github-actions[bot]`, the author of issues created with `github.token`. With a personal access token, a GitHub App token, or another repository, sync does not recognize the issues it filed and files every finding again. Run the workflows in the report repository itself.
 
-The `report` action has the output `html-url`, the URL of the uploaded HTML report.
+The `report` action has the output `html-url`, the URL of the uploaded HTML report. It is empty when the model is off or could not write the report.
 
 ## What becomes an issue
 
@@ -152,7 +153,7 @@ A finding is filed once its result is settled:
 
 An issue is `urgent` when the finding is Critical, or High and confirmed by validation. Every code-vuln finding is confirmed, so all of its High findings are urgent. When the `mention` input is set, an urgent issue mentions it at the top, and an issue that becomes urgent later gets a comment with the mention.
 
-The `sync` action files an issue first and then asks Kiro CLI to write its Summary, Why it matters, and Risk if left unresolved sections. A later run fills any section that Kiro missed.
+The `sync` action files an issue with the scan's details first. When `bedrock-model-id` is set, it then asks the model to add Summary, Why it matters, and Risk if left unresolved sections. If the model fails after the retries, the issue keeps only the details and ends with a note saying so, and a later run tries again. Setting `bedrock-model-id` later adds the sections to open issues that lack them, and clearing it leaves written sections in place.
 
 ## Handling an issue
 
@@ -196,9 +197,9 @@ Sync reads state only from issues that `github-actions[bot]` created, and ignore
 
 ## Weekly report
 
-The `report` action posts an issue titled `Continuum weekly report YYYY-Www` with the label `weekly-report`. The body counts open, new, and closed findings per severity and per repository, gives a short summary for each severity that has open findings, names the scans that did not complete, and lists the open findings and the findings closed that week in collapsed sections. A list that does not fit in the body continues in comments. Findings closed as not planned by the owner or as duplicates do not count as closed.
+The `report` action posts an issue titled `Continuum weekly report YYYY-Www` with the label `weekly-report`. The body counts open, new, and closed findings per severity and per repository, names the scans that did not complete, and lists the open findings and the findings closed that week in collapsed sections. A list that does not fit in the body continues in comments. Findings closed as not planned by the owner or as duplicates do not count as closed.
 
-Kiro CLI also writes a Japanese visual report as a single HTML file, which the action uploads as an artifact kept for 400 days and links from the issue. Posting a report closes the previous week's report, and a rerun in the same week rewrites that week's report.
+When `bedrock-model-id` is set, the model also summarizes each severity that has open findings and writes a Japanese visual report as a single HTML file, which the action uploads as an artifact kept for 400 days and links from the issue. A part the model fails to write after the retries is left out, and the body ends with a note that names it. Without a model, the report has neither part and no note. Posting a report closes the previous week's report, and a rerun in the same week rewrites that week's report.
 
 ## Code reviews
 
@@ -206,7 +207,7 @@ A code review is due when it has no running job and no completed job that starte
 
 ## Confidentiality
 
-The issues and the report artifact hold details of vulnerabilities that may not be fixed yet, so keep the report repository private. The `continuum-scan` CLI prints only counts and target names to the workflow log. Finding details go to the issues and, inside the job, to Kiro CLI. Do not echo them in your own workflow steps, and do not copy them to public repositories.
+The issues and the report artifact hold details of vulnerabilities that may not be fixed yet, so keep the report repository private. The `continuum-scan` CLI prints only counts and target names to the workflow log. Finding details go to the issues and, inside the job, to the Bedrock model. Do not echo them in your own workflow steps, and do not copy them to public repositories.
 
 ## Development
 

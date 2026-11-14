@@ -86,6 +86,16 @@ Resources:
                   - continuum:ListCodeScans
                   - continuum:ListEnvironments
                 Resource: !Sub arn:${AWS::Partition}:continuum:${AWS::Region}:${AWS::AccountId}:environments/*
+              # Needed only when bedrock-model-id is set. A cross-Region
+              # inference profile calls foundation models in other Regions,
+              # and bedrock-region may differ from this stack's Region, so
+              # the Region is a wildcard.
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
 
 Outputs:
   GitHubActionsRoleArn:

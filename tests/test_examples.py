@@ -68,6 +68,47 @@ def test_example_workflows_call_both_actions_with_a_pinned_sha() -> None:
         assert all(VERSION_COMMENT.search(line) for line in lines), lines
 
 
+def test_example_workflows_pass_the_model_variable() -> None:
+    for name in ("sync.yml", "report.yml"):
+        text = (EXAMPLES / "workflows" / name).read_text()
+        assert "bedrock-model-id: ${{ vars.BEDROCK_MODEL_ID }}" in text
+        assert "kiro" not in text.lower()
+
+
+class _CfnLoader(yaml.SafeLoader):
+    pass
+
+
+_CfnLoader.add_multi_constructor(
+    "!",
+    lambda loader, suffix, node: {
+        f"!{suffix}": loader.construct_scalar(node)
+        if isinstance(node, yaml.ScalarNode)
+        else loader.construct_sequence(node)
+    },
+)
+
+
+def test_example_role_invokes_bedrock_models() -> None:
+    # _CfnLoader is a SafeLoader that reads CloudFormation tags as plain dicts.
+    template = yaml.load(
+        (EXAMPLES / "infra" / "github-actions-role.yaml").read_text(), _CfnLoader
+    )
+    (policy,) = template["Resources"]["GitHubActionsRole"]["Properties"]["Policies"]
+    statements = [
+        s
+        for s in policy["PolicyDocument"]["Statement"]
+        if s["Action"] == ["bedrock:InvokeModel"]
+    ]
+    assert len(statements) == 1
+    assert statements[0]["Resource"] == [
+        {
+            "!Sub": "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*"
+        },
+        {"!Sub": "arn:${AWS::Partition}:bedrock:*::foundation-model/*"},
+    ]
+
+
 def test_example_templates_pass_cfn_lint() -> None:
     templates = sorted((EXAMPLES / "infra").glob("*.yaml"))
     assert [t.name for t in templates] == [

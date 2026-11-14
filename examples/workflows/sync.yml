@@ -42,5 +42,5 @@ jobs:
         uses: rewse/continuum-github/sync@0000000000000000000000000000000000000000  # vX.Y.Z
         with:
           agent-space-id: ${{ vars.AGENT_SPACE_ID }}
-          kiro-api-key: ${{ secrets.KIRO_API_KEY }}
+          bedrock-model-id: ${{ vars.BEDROCK_MODEL_ID }}
           mention: ${{ vars.MENTION }}

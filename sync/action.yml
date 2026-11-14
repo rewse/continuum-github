@@ -8,12 +8,15 @@ inputs:
   aws-region:
     description: AWS Region of the agent space.
     default: us-east-1
+  bedrock-model-id:
+    description: Bedrock model or inference profile ID, such as us.anthropic.claude-sonnet-5-5, that writes the issue sections. Empty skips the model.
+    default: ""
+  bedrock-region:
+    description: AWS Region that Bedrock is called in. Empty uses aws-region.
+    default: ""
   github-token:
     description: Token that reads and writes issues in the report repository. Keep the default; the actions read state only from issues that github-actions[bot] opened in the calling repository, so another token makes sync file every finding again.
     default: ${{ github.token }}
-  kiro-api-key:
-    description: Kiro API key used to write issue sections.
-    required: true
   mention:
     description: Mention added to urgent findings, such as a GitHub handle. Empty adds none.
     default: ""
@@ -51,22 +54,17 @@ runs:
         REPORT_REPOSITORY: ${{ inputs.report-repository }}
         TARGETS: ${{ inputs.targets }}
 
-    - name: Install Kiro CLI
-      if: steps.sync.outputs.needs-sections != '0'
-      shell: bash
-      # The official installer is allowed as an exception to pinned installs.
-      run: curl -fsSL https://cli.kiro.dev/install | bash
-
     - name: Write issue sections
-      if: steps.sync.outputs.needs-sections != '0'
+      if: steps.sync.outputs.needs-sections != '0' && inputs.bedrock-model-id != ''
       shell: bash
       working-directory: ${{ github.workspace }}
       run: uv run --project "$GITHUB_ACTION_PATH/.." --no-sync continuum-scan sections --targets "$TARGETS"
       env:
         AGENT_SPACE_ID: ${{ inputs.agent-space-id }}
         AWS_REGION: ${{ inputs.aws-region }}
+        BEDROCK_MODEL_ID: ${{ inputs.bedrock-model-id }}
+        BEDROCK_REGION: ${{ inputs.bedrock-region }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        KIRO_API_KEY: ${{ inputs.kiro-api-key }}
         MENTION: ${{ inputs.mention }}
         REPORT_REPOSITORY: ${{ inputs.report-repository }}
         TARGETS: ${{ inputs.targets }}

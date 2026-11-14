@@ -159,16 +159,15 @@ GITHUB_TOKEN="$(gh auth token)" REPORT_REPOSITORY=example-org/security-findings 
 
 The command creates the state, severity, source, `urgent`, `weekly-report`, `repo:<name>`, and `site:<domain>` labels in the report repository, skipping the ones that exist. Create them before the first sync, because GitHub can drop a label that the token is not allowed to create. Rerun it after adding a repository or a site to `targets.toml`.
 
-## 9. Register the variables and the secret
+## 9. Register the variables
 
 ```sh
 gh variable set AGENT_SPACE_ID --repo example-org/security-findings --body <AgentSpaceId>
 gh variable set AWS_ROLE_ARN --repo example-org/security-findings --body <GitHubActionsRoleArn>
 gh variable set MENTION --repo example-org/security-findings --body @example-user
-gh secret set KIRO_API_KEY --repo example-org/security-findings
 ```
 
-`MENTION` is optional. When set, urgent issues mention it; when unset or empty, they mention no one. `gh secret set` reads the Kiro API key from the prompt.
+`MENTION` is optional. When set, urgent issues mention it; when unset or empty, they mention no one.
 
 ## 10. Add the workflows
 
@@ -188,6 +187,22 @@ gh workflow run report.yml --repo example-org/security-findings
 ```
 
 Both are safe to rerun. They share a concurrency group, so a run waits until the other workflow finishes. After this, the schedules in AWS and the two workflows run on their own. [README.md](../README.md) describes the issues they file and how to handle them.
+
+## 11. Turn on the model (optional)
+
+Without a model, the issues and the weekly report hold only what the scans returned. To have a Bedrock model add sections to each issue, summarize each severity in the report, and write the Japanese visual report:
+
+1. Make the model available in your account. For an Anthropic model, submit the use case form once per account, then have an administrator invoke the model once in the Bedrock console. That first call enables the model for the account, so the GitHub Actions role needs no `aws-marketplace` permissions.
+2. Make sure the GitHub Actions role allows `bedrock:InvokeModel`, as the role in [examples/infra/github-actions-role.yaml](../examples/infra/github-actions-role.yaml) does.
+3. Set the model ID:
+
+   ```sh
+   gh variable set BEDROCK_MODEL_ID --repo example-org/security-findings --body us.anthropic.claude-sonnet-5-5
+   ```
+
+The example workflows pass `BEDROCK_MODEL_ID` to the actions. `us.anthropic.claude-sonnet-5-5` is the recommended model. The page source of the visual report needs a long output, so a model with a small output limit fails on it. A `us.` inference profile runs only in US Regions, so if the Agent Space is outside the US, either set the `bedrock-region` input to a US Region or pass an inference profile ID for your Region. The next sync adds the sections to open issues that lack them.
+
+When a model call fails after its retries, the job log shows a line such as `model_failed purpose=page reason=ValidationException`, with the error code and nothing from the findings. The issue or the report then ends with a note that names the part the model could not write.
 
 ## Changing the targets
 

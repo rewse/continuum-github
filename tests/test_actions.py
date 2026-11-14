@@ -41,7 +41,9 @@ def test_actions_declare_the_shared_inputs() -> None:
         assert inputs["mention"]["default"] == ""
         assert inputs["report-repository"]["default"] == "${{ github.repository }}"
         assert inputs["targets"]["default"] == "targets.toml"
-        assert "kiro-api-key" in inputs
+        assert inputs["bedrock-model-id"]["default"] == ""
+        assert inputs["bedrock-region"]["default"] == ""
+        assert "kiro" not in _path(name).read_text().lower()
 
 
 def test_actions_are_composite_and_pin_every_use() -> None:
@@ -106,19 +108,28 @@ def test_actions_run_the_cli_from_the_action_checkout() -> None:
         )
 
 
-def test_sync_writes_sections_only_when_needed() -> None:
-    needed = "steps.sync.outputs.needs-sections != '0'"
+def test_sync_writes_sections_only_when_needed_and_enabled() -> None:
     sync = _step("sync", "Sync findings")
     assert sync["id"] == "sync"
     assert "continuum-scan sync" in sync["run"]
-    assert "KIRO_API_KEY" not in sync["env"]
-    kiro = _step("sync", "Install Kiro CLI")
-    assert kiro["if"] == needed
-    assert kiro["run"] == "curl -fsSL https://cli.kiro.dev/install | bash"
+    assert "BEDROCK_MODEL_ID" not in sync["env"]
     sections = _step("sync", "Write issue sections")
-    assert sections["if"] == needed
+    assert sections["if"] == (
+        "steps.sync.outputs.needs-sections != '0' && inputs.bedrock-model-id != ''"
+    )
     assert "continuum-scan sections" in sections["run"]
-    assert sections["env"]["KIRO_API_KEY"] == "${{ inputs.kiro-api-key }}"
+    assert sections["env"]["BEDROCK_MODEL_ID"] == "${{ inputs.bedrock-model-id }}"
+    assert sections["env"]["BEDROCK_REGION"] == "${{ inputs.bedrock-region }}"
+
+
+def test_report_builds_html_only_when_enabled() -> None:
+    enabled = "inputs.bedrock-model-id != ''"
+    for name in ("Set up Node.js", "Install npm dependencies", "Upload HTML report"):
+        assert _step("report", name)["if"] == enabled
+    build = _step("report", "Build report")
+    assert "if" not in build
+    assert build["env"]["BEDROCK_MODEL_ID"] == "${{ inputs.bedrock-model-id }}"
+    assert build["env"]["BEDROCK_REGION"] == "${{ inputs.bedrock-region }}"
 
 
 def test_report_uploads_an_unzipped_html_artifact() -> None:
@@ -132,7 +143,6 @@ def test_report_uploads_an_unzipped_html_artifact() -> None:
     assert npm["run"] == 'npm ci --prefix "$GITHUB_ACTION_PATH/.." --ignore-scripts'
     build = _step("report", "Build report")
     assert '--out "$RUNNER_TEMP/report"' in build["run"]
-    assert build["env"]["KIRO_API_KEY"] == "${{ inputs.kiro-api-key }}"
     assert "VISUAL_EXPLAINER_DIR=" in build["run"]
     assert (
         '"$GITHUB_ACTION_PATH/../node_modules/visual-explainer/plugins/'

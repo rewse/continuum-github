@@ -8,12 +8,15 @@ inputs:
   aws-region:
     description: AWS Region of the agent space.
     default: us-east-1
+  bedrock-model-id:
+    description: Bedrock model or inference profile ID, such as us.anthropic.claude-sonnet-5-5, that writes the summaries and the Japanese visual report. Empty skips the model.
+    default: ""
+  bedrock-region:
+    description: AWS Region that Bedrock is called in. Empty uses aws-region.
+    default: ""
   github-token:
     description: Token that reads and writes issues in the report repository. Keep the default; the actions read state only from issues that github-actions[bot] opened in the calling repository, so another token makes sync file every finding again.
     default: ${{ github.token }}
-  kiro-api-key:
-    description: Kiro API key used to write the report.
-    required: true
   mention:
     description: Mention added to urgent findings, such as a GitHub handle. Empty adds none.
     default: ""
@@ -26,7 +29,7 @@ inputs:
 
 outputs:
   html-url:
-    description: URL of the uploaded HTML report artifact.
+    description: URL of the uploaded HTML report artifact. Empty when the model is off or the report could not be written.
     value: ${{ steps.upload.outputs.artifact-url }}
 
 runs:
@@ -36,6 +39,7 @@ runs:
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
 
     - name: Set up Node.js
+      if: inputs.bedrock-model-id != ''
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
       with:
         node-version: 24
@@ -48,13 +52,9 @@ runs:
       run: uv sync --project "$GITHUB_ACTION_PATH/.." --locked --no-dev --safe-chain-skip-minimum-package-age
 
     - name: Install npm dependencies
+      if: inputs.bedrock-model-id != ''
       shell: bash
       run: npm ci --prefix "$GITHUB_ACTION_PATH/.." --ignore-scripts
-
-    - name: Install Kiro CLI
-      shell: bash
-      # The official installer is allowed as an exception to pinned installs.
-      run: curl -fsSL https://cli.kiro.dev/install | bash
 
     - name: Build report
       shell: bash
@@ -66,14 +66,16 @@ runs:
       env:
         AGENT_SPACE_ID: ${{ inputs.agent-space-id }}
         AWS_REGION: ${{ inputs.aws-region }}
+        BEDROCK_MODEL_ID: ${{ inputs.bedrock-model-id }}
+        BEDROCK_REGION: ${{ inputs.bedrock-region }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        KIRO_API_KEY: ${{ inputs.kiro-api-key }}
         MENTION: ${{ inputs.mention }}
         REPORT_REPOSITORY: ${{ inputs.report-repository }}
         TARGETS: ${{ inputs.targets }}
 
     - name: Upload HTML report
       id: upload
+      if: inputs.bedrock-model-id != ''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
       with:
         path: ${{ runner.temp }}/report/report.ja.html

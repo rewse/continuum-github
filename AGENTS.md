@@ -6,7 +6,7 @@ continuum-github is a public tool that tracks AWS Continuum and AWS Security Age
 
 ## Confidentiality
 
-The actions run in the user's private repository, and their logs are visible to everyone with access to it. Never print finding details (titles, descriptions, file paths, URLs, severities per finding) or Kiro's output to workflow logs; the `continuum-scan` CLI prints counts and target names only. Never put real finding details, account IDs, domains, or user names in this repository. Tests and examples use `example.com` domains, the owner `example-org`, and the account `111122223333`.
+The actions run in the user's private repository, and their logs are visible to everyone with access to it. Never print finding details (titles, descriptions, file paths, URLs, severities per finding) or the model's output to workflow logs; the `continuum-scan` CLI prints counts and target names only. Never put real finding details, account IDs, domains, or user names in this repository. Tests and examples use `example.com` domains, the owner `example-org`, and the account `111122223333`.
 
 ## Releases
 
