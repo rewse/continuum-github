@@ -36,9 +36,11 @@ aws securityagent list-integrations --region us-east-1 \
 
 ## 3. Prepare the AWS side
 
-The tool does not create the Agent Space, the pentests, their schedules, or AWS Config recording. Prepare them yourself, starting from the example templates. Copy [examples/infra/security-agent.yaml](../examples/infra/security-agent.yaml) and [examples/infra/github-actions-role.yaml](../examples/infra/github-actions-role.yaml), which step 4 uses, to `infra/` in your report repository:
+The tool does not create the Agent Space, the pentests, their schedules, or AWS Config recording. Prepare them yourself, starting from the example templates. Copy [examples/infra/security-agent.yaml](../examples/infra/security-agent.yaml) and [examples/infra/github-actions-role.yaml](../examples/infra/github-actions-role.yaml), which step 4 uses, to `infra/` in your report repository. Take them from a checkout of the release whose SHA you set above, such as a clone of its tag outside the report repository:
 
 ```sh
+git clone --depth 1 --branch <release tag> https://github.com/rewse/continuum-github.git <path to continuum-github>
+git -C <path to continuum-github> rev-parse HEAD  # should print $SHA
 mkdir -p infra
 cp <path to continuum-github>/examples/infra/security-agent.yaml \
   <path to continuum-github>/examples/infra/github-actions-role.yaml infra/
@@ -81,7 +83,7 @@ aws cloudformation describe-stacks --region us-east-1 --stack-name security-agen
 
 `infra/github-actions-role.yaml`, copied in step 3, creates the GitHub OIDC provider and a role with the permissions the actions need: read access to the Agent Space's pentests, code reviews, and findings, permission to start code review jobs and pentest revalidations, and read access to the Continuum code-vuln findings. The role trusts only workflows on the `main` branch of the report repository.
 
-The trust policy uses GitHub's immutable OIDC subject, which embeds the numeric IDs of the owner and the repository, so a renamed or recreated repository cannot assume the role. Read the IDs:
+The trust policy uses GitHub's immutable OIDC subject, which embeds the numeric IDs of the owner and the repository, so a renamed or recreated repository cannot assume the role. GitHub uses this format for repositories created, renamed, or transferred after July 15, 2026. Older repositories keep the name-based format until someone opts in, and `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` shows the repository's setting as `use_immutable_subject`. Read the IDs:
 
 ```sh
 gh api repos/example-org/security-findings --jq '.owner.id, .id'
