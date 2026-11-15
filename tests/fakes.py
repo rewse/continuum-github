@@ -140,8 +140,12 @@ class FakePentest:
 
 
 class FakeModel:
-    def __init__(self, answer: str | None) -> None:
+    """Gives one answer to every prompt; failure is the reason for None."""
+
+    def __init__(self, answer: str | None, failure: str | None = None) -> None:
         self._answer = answer
+        self._failure = failure
+        self.last_failure: str | None = None
         self.prompts: list[str] = []
         self.purposes: list[str] = []
 
@@ -150,14 +154,22 @@ class FakeModel:
     ) -> str | None:
         self.prompts.append(prompt)
         self.purposes.append(purpose)
+        self.last_failure = self._failure if self._answer is None else None
         return self._answer
 
 
 class RecordingModel:
-    """Returns the given answers in order and records each prompt."""
+    """Returns the given answers in order and records each prompt.
 
-    def __init__(self, answers: Sequence[str | None]) -> None:
+    failures, in the same order, give the reason for each None answer.
+    """
+
+    def __init__(
+        self, answers: Sequence[str | None], failures: Sequence[str | None] = ()
+    ) -> None:
         self._answers = list(answers)
+        self._failures = list(failures)
+        self.last_failure: str | None = None
         self.prompts: list[str] = []
         self.purposes: list[str] = []
         self.resources: list[list[Path]] = []
@@ -168,7 +180,10 @@ class RecordingModel:
         self.prompts.append(prompt)
         self.purposes.append(purpose)
         self.resources.append(list(resources))
-        return self._answers.pop(0)
+        answer = self._answers.pop(0)
+        failure = self._failures.pop(0) if self._failures else None
+        self.last_failure = failure if answer is None else None
+        return answer
 
 
 class FakeCodeVuln:

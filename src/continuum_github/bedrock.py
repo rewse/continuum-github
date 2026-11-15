@@ -4,6 +4,7 @@ import json
 import re
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
@@ -55,7 +56,17 @@ class ConverseClient(Protocol):
     def converse(self, **kwargs: Any) -> dict[str, Any]: ...
 
 
+@dataclass(frozen=True)
+class Failure:
+    """Why the model could not write a part: a fixed word or an error code."""
+
+    reason: str
+
+
 class ModelLike(Protocol):
+    @property
+    def last_failure(self) -> str | None: ...
+
     def ask(
         self, prompt: str, purpose: Purpose, resources: Sequence[Path] = ()
     ) -> str | None: ...
@@ -122,6 +133,12 @@ class Bedrock:
         self.client = client
         self.model_id = model_id
         self.page_client = page_client or client
+        # Why the last ask failed, or None after a success.
+        self.last_failure: str | None = None
+
+    def _fail(self, purpose: Purpose, reason: str) -> None:
+        self.last_failure = reason
+        log_failure(purpose, reason)
 
     def ask(
         self, prompt: str, purpose: Purpose, resources: Sequence[Path] = ()
@@ -132,6 +149,7 @@ class Bedrock:
         the answer is printed or logged, because both can repeat finding
         details; a failure logs only its purpose and error code.
         """
+        self.last_failure = None
         client = self.page_client if purpose == "page" else self.client
         try:
             response = client.converse(
@@ -146,24 +164,24 @@ class Bedrock:
                 inferenceConfig={"maxTokens": MAX_TOKENS[purpose]},
             )
         except ClientError as error:
-            log_failure(purpose, error.response.get("Error", {}).get("Code", "unknown"))
+            self._fail(purpose, error.response.get("Error", {}).get("Code", "unknown"))
             return None
         except BotoCoreError as error:
-            log_failure(purpose, type(error).__name__)
+            self._fail(purpose, type(error).__name__)
             return None
         stop = response.get("stopReason")
         if stop not in _ACCEPTED_STOPS:
             if not isinstance(stop, str) or _STOP_RE.fullmatch(stop) is None:
                 stop = "unknown_stop"
-            log_failure(purpose, stop)
+            self._fail(purpose, stop)
             return None
         text = _first_text(response)
         if text is None:
-            log_failure(purpose, "no_text")
+            self._fail(purpose, "no_text")
             return None
         answer = _between_markers(text)
         if answer is None:
-            log_failure(purpose, "no_markers")
+            self._fail(purpose, "no_markers")
         return answer
 
 
@@ -202,20 +220,22 @@ def _sections_prompt(detection: Detection, language: str) -> str:
 
 def finding_sections(
     model: ModelLike, detection: Detection, language: str = DEFAULT_LANGUAGE
-) -> Sections | None:
+) -> Sections | Failure:
     """Asks the model for the summary sections of a finding issue.
 
     The sections are written in the language of the locale language.
-    Returns None when the answer is missing, not a JSON object, or has a
-    value that is missing, empty, or longer than 1,500 characters. An
-    answer that arrives but fails these checks is logged as invalid.
+    Returns a Failure when the model gives no answer, with the model's
+    reason, or when the answer is not a JSON object or has a value that is
+    missing, empty, or longer than 1,500 characters, with invalid_answer.
+    An answer that arrives but fails these checks is logged as invalid.
     """
     answer = model.ask(_sections_prompt(detection, language), "sections")
     if answer is None:
-        return None
+        return Failure(model.last_failure or "unknown")
     sections = _parse_sections(answer)
     if sections is None:
         log_failure("sections", "invalid_answer")
+        return Failure("invalid_answer")
     return sections
 
 
@@ -267,24 +287,29 @@ def _summary_prompt(severity: Severity, data: "WeeklyData", language: str) -> st
 
 def severity_summaries(
     model: ModelLike, data: "WeeklyData", language: str = DEFAULT_LANGUAGE
-) -> dict[Severity, str]:
+) -> tuple[dict[Severity, str], dict[Severity, str]]:
     """Asks the model for a short summary of the open findings of each severity.
 
     The summaries are written in the language of the locale language.
-    Severities without open findings are not asked about. Answers that are
-    missing, empty, or longer than 1,500 characters are left out.
+    Severities without open findings are not asked about. Returns the
+    summaries and, for each severity left without one, the reason: the
+    model's, or invalid_answer for an answer that is empty or longer than
+    1,500 characters.
     """
-    summaries = {}
+    summaries: dict[Severity, str] = {}
+    failures: dict[Severity, str] = {}
     for severity in dict.fromkeys(item.severity for item in data.open_items):
         answer = model.ask(_summary_prompt(severity, data, language), "summary")
         if answer is None:
+            failures[severity] = model.last_failure or "unknown"
             continue
         answer = answer.strip()
         if answer and len(answer) <= MAX_SECTION:
             summaries[severity] = answer
         else:
             log_failure("summary", "invalid_answer")
-    return summaries
+            failures[severity] = "invalid_answer"
+    return summaries, failures
 
 
 KIT_LINK = '<link rel="stylesheet" href="kit.css" data-ve-kit>'

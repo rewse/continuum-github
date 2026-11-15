@@ -228,13 +228,25 @@ def test_render_weekly_keeps_the_note_last_when_lists_overflow() -> None:
     )
 
 
-def test_unavailable_parts_lists_missing_summaries_and_html() -> None:
-    assert unavailable_parts(TWO_SEVERITIES, {Severity.MEDIUM: "s"}, html=False) == [
-        "High summary",
-        "Visual report",
+def test_unavailable_parts_names_each_part_with_its_reason() -> None:
+    parts = unavailable_parts(
+        TWO_SEVERITIES,
+        {Severity.MEDIUM: "s"},
+        {Severity.HIGH: "content_filtered"},
+        "render_failed",
+    )
+    assert parts == [
+        "High summary (`content_filtered`)",
+        "Visual report (`render_failed`)",
     ]
-    both = {Severity.HIGH: "s", Severity.MEDIUM: "s"}
-    assert unavailable_parts(TWO_SEVERITIES, both, html=True) == []
+    both = {Severity.HIGH: "h", Severity.MEDIUM: "m"}
+    assert unavailable_parts(TWO_SEVERITIES, both, {}, None) == []
+    assert unavailable_parts(TWO_SEVERITIES, both, {}, "a`b") == [
+        "Visual report (`unknown`)"
+    ]
+    assert unavailable_parts(TWO_SEVERITIES, {Severity.MEDIUM: "s"}, {}, None) == [
+        "High summary"
+    ]
 
 
 def test_publish_weekly_with_html_links_it() -> None:
@@ -470,7 +482,7 @@ def test_severity_summaries_asks_once_per_severity() -> None:
         NOW,
     )
     model = FakeModel(" Two findings. ")
-    assert severity_summaries(model, data) == {
+    assert severity_summaries(model, data)[0] == {
         Severity.HIGH: "Two findings.",
         Severity.MEDIUM: "Two findings.",
     }
@@ -485,9 +497,20 @@ def test_severity_summaries_asks_once_per_severity() -> None:
 
 def test_severity_summaries_drops_bad_answers() -> None:
     data = build_weekly([_rec(1, "severity:high")], [], NOW)
-    assert severity_summaries(FakeModel(None), data) == {}
-    assert severity_summaries(FakeModel("  "), data) == {}
-    assert severity_summaries(FakeModel("x" * 1501), data) == {}
+    assert severity_summaries(FakeModel(None), data)[0] == {}
+    assert severity_summaries(FakeModel("  "), data)[0] == {}
+    assert severity_summaries(FakeModel("x" * 1501), data)[0] == {}
+
+
+def test_severity_summaries_returns_the_failure_reasons() -> None:
+    data = build_weekly([_rec(1, "severity:high"), _rec(2, "severity:medium")], [], NOW)
+    model = RecordingModel([None, "  "], failures=["content_filtered", None])
+    summaries, failures = severity_summaries(model, data)
+    assert summaries == {}
+    assert failures == {
+        Severity.HIGH: "content_filtered",
+        Severity.MEDIUM: "invalid_answer",
+    }
 
 
 def test_cli_report_build_writes_files_and_prints_counts(
@@ -512,13 +535,12 @@ def test_cli_report_build_writes_files_and_prints_counts(
     monkeypatch.setattr(
         cli,
         "_build_report",
-        lambda settings, targets, model: (data, {Severity.HIGH: "High summary."}),
+        lambda settings, targets, model: (data, {Severity.HIGH: "High summary."}, {}),
     )
     visual = []
 
     def fake_visual(model, data_, skill_dir, out_, language):
         visual.append((data_, skill_dir, out_, language))
-        return True
 
     monkeypatch.setattr(cli, "build_visual_report", fake_visual)
     monkeypatch.setenv("VISUAL_EXPLAINER_DIR", "/ve")
@@ -565,9 +587,17 @@ def test_cli_report_build_counts_a_missing_visual_report(
     monkeypatch.setenv("REPORT_REPOSITORY", "example-org/security-findings")
     monkeypatch.setenv("BEDROCK_MODEL_ID", "m1")
     monkeypatch.setattr(
-        cli, "_build_report", lambda settings, targets, model: (DATA, {})
+        cli,
+        "_build_report",
+        lambda settings, targets, model: (
+            DATA,
+            {},
+            {Severity.HIGH: "content_filtered", Severity.MEDIUM: "ThrottlingException"},
+        ),
     )
-    monkeypatch.setattr(cli, "build_visual_report", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        cli, "build_visual_report", lambda *args, **kwargs: "render_failed"
+    )
     assert (
         cli.main(
             ["report", "build", "--targets", str(TARGETS_PATH), "--out", str(tmp_path)]
@@ -580,8 +610,9 @@ def test_cli_report_build_counts_a_missing_visual_report(
         .read_text()
         .rstrip()
         .endswith(
-            "_Written without Bedrock this week: High summary, Medium summary, "
-            "Visual report._"
+            "_Written without Bedrock this week: High summary "
+            "(`content_filtered`), Medium summary (`ThrottlingException`), "
+            "Visual report (`render_failed`)._"
         )
     )
 
@@ -650,7 +681,7 @@ def test_build_visual_report_retries_once_with_render_errors(tmp_path) -> None:
 
     model = RecordingModel(["<html>1</html>", "<html>2</html>"])
     out = tmp_path / "report.html"
-    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is True
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is None
     assert out.read_text() == "<p>ok</p>"
     assert "line 3 <ve-bar>: bad" in model.prompts[1]
     assert (
@@ -668,13 +699,17 @@ def test_build_visual_report_gives_up_without_writing(tmp_path) -> None:
         build_visual_report(
             RecordingModel(["a", "b"]), DATA, SKILL_DIR, out, runner=always_fail
         )
-        is False
+        == "render_failed"
     )
     assert (
         build_visual_report(
-            RecordingModel([None]), DATA, SKILL_DIR, out, runner=always_fail
+            RecordingModel([None], failures=["content_filtered"]),
+            DATA,
+            SKILL_DIR,
+            out,
+            runner=always_fail,
         )
-        is False
+        == "content_filtered"
     )
     assert not out.exists()
 
@@ -692,7 +727,10 @@ def test_build_visual_report_writes_the_source_and_removes_partial_output(
 
     out = tmp_path / "report.html"
     model = RecordingModel(["<p>1</p>", "<p>2</p>"])
-    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is False
+    assert (
+        build_visual_report(model, DATA, SKILL_DIR, out, runner=runner)
+        == "render_failed"
+    )
     assert sources == ["<p>1</p>", "<p>2</p>"]
     assert not out.exists()
 
@@ -704,7 +742,10 @@ def test_build_visual_report_ignores_a_stale_output_file(tmp_path) -> None:
         args, 0, stdout="", stderr=""
     )
     model = RecordingModel(["a", "b"])
-    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=no_output) is False
+    assert (
+        build_visual_report(model, DATA, SKILL_DIR, out, runner=no_output)
+        == "render_failed"
+    )
     assert not out.exists()
 
 
@@ -715,7 +756,10 @@ def test_build_visual_report_keeps_the_last_render_errors(tmp_path) -> None:
     )
     model = RecordingModel(["a", "b"])
     out = tmp_path / "report.html"
-    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=long_fail) is False
+    assert (
+        build_visual_report(model, DATA, SKILL_DIR, out, runner=long_fail)
+        == "render_failed"
+    )
     assert "y" * 8000 in model.prompts[1]
     assert "xy" not in model.prompts[1]
 
@@ -726,7 +770,10 @@ def test_build_visual_report_fails_when_node_cannot_run(tmp_path) -> None:
 
     out = tmp_path / "report.html"
     model = RecordingModel(["a", "b"])
-    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is False
+    assert (
+        build_visual_report(model, DATA, SKILL_DIR, out, runner=runner)
+        == "render_failed"
+    )
     assert not out.exists()
 
 
@@ -774,7 +821,7 @@ def test_build_visual_report_colors_unstyled_svg_text(tmp_path) -> None:
 
     out = tmp_path / "report.html"
     model = RecordingModel(["<html>1</html>"])
-    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is True
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is None
     assert "fill: var(--text)" in out.read_text()
     assert "class from the kit" in model.prompts[0]
 
@@ -836,11 +883,15 @@ def test_build_visual_report_sets_the_page_language(tmp_path) -> None:
 
     out = tmp_path / "report.html"
     model = RecordingModel(["<html>1</html>"])
-    assert build_visual_report(
-        model, DATA, SKILL_DIR, out, runner=runner, language="ja_JP"
+    assert (
+        build_visual_report(
+            model, DATA, SKILL_DIR, out, runner=runner, language="ja_JP"
+        )
+        is None
     )
     assert '<html lang="ja-JP">' in out.read_text()
 
 
 def test_unavailable_parts_names_the_visual_report() -> None:
-    assert unavailable_parts(TWO_SEVERITIES, {}, html=False)[-1] == "Visual report"
+    parts = unavailable_parts(TWO_SEVERITIES, {}, {}, "render_failed")
+    assert parts[-1] == "Visual report (`render_failed`)"

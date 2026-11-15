@@ -11,11 +11,11 @@ from continuum_github.models import Severity
 from continuum_github.models import code_review_key
 from continuum_github.models import code_vuln_key
 from continuum_github.models import pentest_key
-from continuum_github.render import FALLBACK_NOTE
 from continuum_github.render import Sections
 from continuum_github.render import add_mention
 from continuum_github.render import escape_text
 from continuum_github.render import extract_section
+from continuum_github.render import fallback_note
 from continuum_github.render import fit_body
 from continuum_github.render import initial_state
 from continuum_github.render import issue_body
@@ -137,15 +137,15 @@ def test_body_without_sections_has_no_section_headings() -> None:
     assert body.index("| Severity |") < body.index(details)
     assert not body.startswith("@octocat")
     assert "| Site |" not in body
-    assert FALLBACK_NOTE not in body
+    assert "Bedrock could not write" not in body
 
 
 def test_body_with_fallback_ends_with_the_note_before_the_state() -> None:
     state = initial_state(CODE_MEDIUM)
-    body = issue_body(CODE_MEDIUM, state, None, "", fallback=True)
+    body = issue_body(CODE_MEDIUM, state, None, "", failure="content_filtered")
     assert (
         body.index("</details>")
-        < body.index(FALLBACK_NOTE)
+        < body.index(fallback_note("content_filtered"))
         < body.index("<!-- continuum-state")
     )
     assert parse_state(body) == state
@@ -295,7 +295,7 @@ def test_code_review_labels_and_table_show_the_location() -> None:
 
 
 def test_fallback_note_says_it_stays_until_a_sync_succeeds() -> None:
-    assert FALLBACK_NOTE.endswith(
+    assert fallback_note("x").endswith(
         "Each later sync tries again, and this note stays until one succeeds._"
     )
 
@@ -409,3 +409,14 @@ def test_fit_body_never_splits_a_code_span() -> None:
     assert "@alice" not in fitted
     assert "a\n… (truncated)" in fitted
     assert parse_state(fitted) == initial_state(odd)
+
+
+def test_fallback_note_names_the_reason() -> None:
+    assert fallback_note("content_filtered") == (
+        "_Bedrock could not write the Summary, Why it matters, and Risk if left "
+        "unresolved sections (`content_filtered`), so this issue shows the "
+        "scanner's details only. Each later sync tries again, and this note "
+        "stays until one succeeds._"
+    )
+    assert "(`unknown`)" in fallback_note("a`b\nc")
+    assert "(`unknown`)" in fallback_note("x" * 65)
