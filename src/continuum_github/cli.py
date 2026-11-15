@@ -133,16 +133,16 @@ def _sections(settings: Settings, targets: Targets) -> int:
 
 def _build_report(
     settings: Settings, targets: Targets, model: Bedrock | None
-) -> tuple[WeeklyData, dict[Severity, str]]:
-    """Returns the week's data and the summaries the model wrote, if any."""
+) -> tuple[WeeklyData, dict[Severity, str], dict[Severity, str]]:
+    """Returns the week's data, the model's summaries, and why any are missing."""
     with _clients(settings) as (github, pentest, code_vuln, code_review):
         records = records_from_issues(github.issues())
         scans = collect_scans(targets, pentest, code_vuln, code_review)
     data = build_weekly(records, scans, datetime.now(UTC))
-    summaries = (
-        {} if model is None else severity_summaries(model, data, settings.language)[0]
-    )
-    return data, summaries
+    if model is None:
+        return data, {}, {}
+    summaries, failures = severity_summaries(model, data, settings.language)
+    return data, summaries, failures
 
 
 def _publish(
@@ -158,7 +158,7 @@ def _publish(
 
 def _report_build(settings: Settings, targets: Targets, out: Path) -> None:
     model = _model(settings)
-    data, summaries = _build_report(settings, targets, model)
+    data, summaries, failures = _build_report(settings, targets, model)
     out.mkdir(parents=True, exist_ok=True)
     if model is None:
         # A file left by an earlier run must not be uploaded.
@@ -166,14 +166,15 @@ def _report_build(settings: Settings, targets: Targets, out: Path) -> None:
         html = False
         unavailable: list[str] = []
     else:
-        html = build_visual_report(
+        html_failure = build_visual_report(
             model,
             data,
             settings.visual_explainer_dir,
             out / "report.html",
             language=settings.language,
         )
-        unavailable = unavailable_parts(data, summaries, html)
+        html = html_failure is None
+        unavailable = unavailable_parts(data, summaries, failures, html_failure)
     body, comments = render_weekly(data, summaries, unavailable)
     (out / "body.md").write_text(body, encoding="utf-8")
     (out / "comments.json").write_text(json.dumps(comments), encoding="utf-8")

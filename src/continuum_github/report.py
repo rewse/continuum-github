@@ -19,6 +19,7 @@ from continuum_github.records import Record
 from continuum_github.render import SOURCE_LABELS
 from continuum_github.render import escape_text
 from continuum_github.render import extract_section
+from continuum_github.render import safe_reason
 from continuum_github.render import strip_severity_tag
 from continuum_github.sync import GitHubLike
 
@@ -366,22 +367,30 @@ def _render_segments(segments: Sequence[tuple[str, list[str]]]) -> str:
 
 
 def unavailable_parts(
-    data: WeeklyData, summaries: Mapping[Severity, str], html: bool
+    data: WeeklyData,
+    summaries: Mapping[Severity, str],
+    failures: Mapping[Severity, str],
+    html_failure: str | None,
 ) -> list[str]:
     """Names the parts the model was asked for but could not write.
 
     A severity with open findings and no summary is named "<Severity>
-    summary", in report order, followed by the visual report when html is
-    false.
+    summary", in report order, followed by the visual report when
+    html_failure is not None. Each name ends with its reason in parentheses,
+    from failures or html_failure, when one is known.
     """
     parts = [
-        f"{_heading(severity)} summary"
+        _with_reason(f"{_heading(severity)} summary", failures.get(severity))
         for severity, row in data.counts.items()
         if row[0] and not summaries.get(severity)
     ]
-    if not html:
-        parts.append(HTML_PART)
+    if html_failure is not None:
+        parts.append(_with_reason(HTML_PART, html_failure))
     return parts
+
+
+def _with_reason(part: str, reason: str | None) -> str:
+    return part if reason is None else f"{part} (`{safe_reason(reason)}`)"
 
 
 def render_weekly(
@@ -572,8 +581,11 @@ def build_visual_report(
     out: Path,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     language: str = DEFAULT_LANGUAGE,
-) -> bool:
-    """Writes the visual report to out and returns whether it did.
+) -> str | None:
+    """Writes the visual report to out, returning None or why it could not.
+
+    The reason is the model's when it gives no page source, and
+    render_failed when no source renders.
 
     The model writes a page source in the language of the locale language,
     and visual-explainer renders it. When rendering fails, the model
@@ -585,9 +597,11 @@ def build_visual_report(
     with tempfile.TemporaryDirectory(prefix="continuum-report-") as work:
         src = Path(work) / "report.src.html"
         errors: str | None = None
+        failure = "render_failed"
         for _ in range(2):
             source = visual_report_source(model, data, skill_dir, errors, language)
             if source is None:
+                failure = model.last_failure or "unknown"
                 break
             src.write_text(source, encoding="utf-8")
             errors = _render(runner, skill_dir, src, out)
@@ -595,6 +609,6 @@ def build_visual_report(
                 html = out.read_text(encoding="utf-8")
                 html = color_unstyled_svg_text(strip_external_fonts(html))
                 out.write_text(set_html_lang(html, language), encoding="utf-8")
-                return True
+                return None
     out.unlink(missing_ok=True)
-    return False
+    return failure
