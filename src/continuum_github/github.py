@@ -1,7 +1,9 @@
 """Minimal GitHub client for the finding issues of one repository."""
 
+import math
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from datetime import UTC
 from email.utils import parsedate_to_datetime
 from typing import Any, Literal
 
@@ -59,22 +61,34 @@ def _is_rate_limited(response: httpx.Response) -> bool:
     return isinstance(message, str) and "rate limit" in message.lower()
 
 
+def _finite(value: str) -> float | None:
+    """Returns value as a finite number, or None if it is not one."""
+    try:
+        number = float(value)
+    except ValueError:
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _seconds_until(value: str, now: float) -> float | None:
     """Returns the wait a Retry-After value asks for, or None if unreadable.
 
-    HTTP allows either a number of seconds or a date.
+    HTTP allows either a number of seconds or a date, which is always GMT;
+    a date without a zone, as in the asctime form, is read as UTC.
     """
+    seconds = _finite(value)
+    if seconds is not None:
+        return seconds
     try:
-        return float(value)
-    except ValueError:
-        pass
-    try:
-        return parsedate_to_datetime(value).timestamp() - now
+        date = parsedate_to_datetime(value)
     except (TypeError, ValueError):
         return None
+    if date.tzinfo is None:
+        date = date.replace(tzinfo=UTC)
+    return date.timestamp() - now
 
 
-def _retry_delay(response: httpx.Response, clock: Callable[[], float]) -> float:
+def _retry_delay(response: httpx.Response, now: Callable[[], float]) -> float:
     """Returns seconds to wait before retrying a rate-limited request.
 
     The wait is Retry-After as seconds or an HTTP date, else the rate-limit
@@ -82,17 +96,15 @@ def _retry_delay(response: httpx.Response, clock: Callable[[], float]) -> float:
     bound keeps a reset in the past, as with a skewed clock, from using up
     every retry at once.
     """
-    now = time.time()
+    current = now()
     delay = None
     retry_after = response.headers.get("Retry-After")
     if retry_after is not None:
-        delay = _seconds_until(retry_after, now)
+        delay = _seconds_until(retry_after, current)
     reset = response.headers.get("X-RateLimit-Reset")
     if delay is None and reset is not None:
-        try:
-            delay = float(reset) - now
-        except ValueError:
-            delay = None
+        reset_at = _finite(reset)
+        delay = None if reset_at is None else reset_at - current
     if delay is None:
         delay = _DEFAULT_WAIT
     return min(max(delay, _MIN_WAIT), _MAX_WAIT)
@@ -108,6 +120,7 @@ class GitHub:
         min_write_interval: float = 1.0,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        now: Callable[[], float] = time.time,
     ) -> None:
         self._client = client
         self._repository = repository
@@ -116,6 +129,7 @@ class GitHub:
         self._min_write_interval = min_write_interval
         self._sleep = sleep
         self._clock = clock
+        self._now = now
         self._last_write: float | None = None
 
     def issues(self) -> list[dict[str, Any]]:
@@ -246,7 +260,7 @@ class GitHub:
                 self._last_write = self._clock()
             if attempt == _MAX_RETRIES or not _is_rate_limited(response):
                 return response
-            self._sleep(_retry_delay(response, self._clock))
+            self._sleep(_retry_delay(response, self._now))
         raise AssertionError("unreachable")
 
     def _pace_write(self) -> None:
