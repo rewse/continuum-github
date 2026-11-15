@@ -29,8 +29,8 @@ from continuum_github.reconcile import Update
 from continuum_github.reconcile import plan_sync
 from continuum_github.records import Record
 from continuum_github.records import records_from_issues
-from continuum_github.render import FALLBACK_NOTE
 from continuum_github.render import add_mention
+from continuum_github.render import fallback_note
 from continuum_github.render import fit_body
 from continuum_github.render import initial_state
 from continuum_github.render import issue_body
@@ -447,8 +447,9 @@ def fill_sections(
     The sections are written in the language of the locale language.
     The rewritten body of an urgent issue starts with mention unless it is
     empty. Issues whose detection cannot be read are left for a later run.
-    An issue for which the model gives no valid answer gets FALLBACK_NOTE
-    once and is retried by a later run. Returns the number of issues filled.
+    An issue for which the model gives no valid answer gets fallback_note
+    with the reason, rewritten only when the reason changes, and is retried
+    by a later run. Returns the number of issues filled.
     """
     filled = 0
     for record in records_from_issues(github.issues()):
@@ -471,12 +472,15 @@ def fill_sections(
             continue
         sections = finding_sections(model, detection, language)
         if isinstance(sections, Failure):
-            # Marks the issue once; a later run retries the sections.
-            if FALLBACK_NOTE not in record.body:
+            # Writes the note again only when its reason changes; a later run
+            # retries the sections.
+            if fallback_note(sections.reason) not in record.body:
                 github.update_issue(
                     record.number,
                     body=fit_body(
-                        issue_body(detection, state, None, mention, fallback=True)
+                        issue_body(
+                            detection, state, None, mention, failure=sections.reason
+                        )
                     ),
                 )
             continue

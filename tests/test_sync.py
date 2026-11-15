@@ -23,9 +23,9 @@ from continuum_github.models import RevalidationResult
 from continuum_github.models import Severity
 from continuum_github.models import TargetScan
 from continuum_github.render import CLOSED_ABSENT
-from continuum_github.render import FALLBACK_NOTE
 from continuum_github.render import REOPENED
 from continuum_github.render import REVALIDATED_FIXED
+from continuum_github.render import fallback_note
 from continuum_github.render import issue_body
 from continuum_github.state import IssueState
 from continuum_github.state import parse_state
@@ -702,11 +702,16 @@ def test_fill_sections_skips_missing_detections_and_failed_answers() -> None:
     assert github.bodies == {}
     assert (
         fill_sections(
-            TARGETS, github, found, FakeCodeVuln(), FakeCodeReview(), FakeModel(None)
+            TARGETS,
+            github,
+            found,
+            FakeCodeVuln(),
+            FakeCodeReview(),
+            FakeModel(None, "content_filtered"),
         )
         == 0
     )
-    assert github.bodies[1].count(FALLBACK_NOTE) == 1
+    assert github.bodies[1].count(fallback_note("content_filtered")) == 1
     assert _state(github.bodies[1]).sections is False
 
 
@@ -720,12 +725,17 @@ def test_fill_sections_leaves_an_already_marked_issue_alone() -> None:
         pentest_id="pt-1",
     )
     item = _issue_item(1, keys=("k1",))
-    item["body"] = issue_body(detection, state, None, "", fallback=True)
+    item["body"] = issue_body(detection, state, None, "", failure="content_filtered")
     github = FakeGitHub(issues=[item])
     pentest = FakePentest(scans={}, detections={"f1": detection})
     assert (
         fill_sections(
-            TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview(), FakeModel(None)
+            TARGETS,
+            github,
+            pentest,
+            FakeCodeVuln(),
+            FakeCodeReview(),
+            FakeModel(None, "content_filtered"),
         )
         == 0
     )
@@ -749,19 +759,59 @@ def test_fill_sections_rewrites_the_old_fallback_note_once() -> None:
         pentest_id="pt-1",
     )
     item = _issue_item(1, keys=("k1",))
-    body = issue_body(detection, state, None, "", fallback=True)
-    item["body"] = body.replace(FALLBACK_NOTE, OLD_NOTE)
+    body = issue_body(detection, state, None, "", failure="content_filtered")
+    item["body"] = body.replace(fallback_note("content_filtered"), OLD_NOTE)
     github = FakeGitHub(issues=[item])
     pentest = FakePentest(scans={}, detections={"f1": detection})
     assert (
         fill_sections(
-            TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview(), FakeModel(None)
+            TARGETS,
+            github,
+            pentest,
+            FakeCodeVuln(),
+            FakeCodeReview(),
+            FakeModel(None, "content_filtered"),
         )
         == 0
     )
     assert list(github.bodies) == [1]
-    assert github.bodies[1].count(FALLBACK_NOTE) == 1
+    assert github.bodies[1].count(fallback_note("content_filtered")) == 1
     assert OLD_NOTE not in github.bodies[1]
+
+
+def test_fill_sections_rewrites_the_note_only_when_the_reason_changes() -> None:
+    detection = _det("k1")
+    state = IssueState(
+        source="pentest",
+        target="weekly-x",
+        keys=("k1",),
+        finding_ids=("f1",),
+        pentest_id="pt-1",
+    )
+    item = _issue_item(1, keys=("k1",))
+    item["body"] = issue_body(detection, state, None, "", failure="content_filtered")
+    pentest = FakePentest(scans={}, detections={"f1": detection})
+    same = FakeGitHub(issues=[item])
+    fill_sections(
+        TARGETS,
+        same,
+        pentest,
+        FakeCodeVuln(),
+        FakeCodeReview(),
+        FakeModel(None, "content_filtered"),
+    )
+    assert same.bodies == {}
+    changed = FakeGitHub(issues=[item])
+    fill_sections(
+        TARGETS,
+        changed,
+        pentest,
+        FakeCodeVuln(),
+        FakeCodeReview(),
+        FakeModel(None, "ThrottlingException"),
+    )
+    assert fallback_note("ThrottlingException") in changed.bodies[1]
+    assert fallback_note("content_filtered") not in changed.bodies[1]
 
 
 def test_fill_sections_adds_headings_to_a_body_without_them() -> None:
@@ -774,7 +824,7 @@ def test_fill_sections_adds_headings_to_a_body_without_them() -> None:
         pentest_id="pt-1",
     )
     item = _issue_item(1, keys=("k1",))
-    item["body"] = issue_body(detection, state, None, "", fallback=True)
+    item["body"] = issue_body(detection, state, None, "", failure="content_filtered")
     github = FakeGitHub(issues=[item])
     pentest = FakePentest(scans={}, detections={"f1": detection})
     model = FakeModel('{"summary": "S", "why": "W", "risk": "R"}')
@@ -783,7 +833,7 @@ def test_fill_sections_adds_headings_to_a_body_without_them() -> None:
         == 1
     )
     assert "## Summary\n\nS" in github.bodies[1]
-    assert FALLBACK_NOTE not in github.bodies[1]
+    assert "Bedrock could not write" not in github.bodies[1]
 
 
 def test_run_sync_adds_the_site_label_to_existing_issues() -> None:

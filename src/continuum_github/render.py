@@ -23,11 +23,15 @@ REOPENED = (
 REVALIDATED_FIXED = "Revalidated: not reproduced."
 REVALIDATED_STILL = "Revalidated: still reproducible. Reopening."
 REVALIDATION_FAILED = "Revalidation did not complete."
-FALLBACK_NOTE = (
+_FALLBACK_NOTE = (
     "_Bedrock could not write the Summary, Why it matters, and Risk if left "
-    "unresolved sections, so this issue shows the scanner's details only. "
-    "Each later sync tries again, and this note stays until one succeeds._"
+    "unresolved sections (`{reason}`), so this issue shows the scanner's "
+    "details only. Each later sync tries again, and this note stays until "
+    "one succeeds._"
 )
+# A failure reason is a fixed word or an AWS error code; anything else is
+# replaced so the body never carries unexpected text.
+_REASON_RE = re.compile(r"[A-Za-z0-9_]{1,64}")
 
 _MAX_BODY = 65536
 _MAX_TITLE = 256
@@ -50,6 +54,16 @@ class Sections:
     summary: str
     why: str
     risk: str
+
+
+def safe_reason(reason: str) -> str:
+    """Returns reason when it is a plain word or code, and "unknown" otherwise."""
+    return reason if _REASON_RE.fullmatch(reason) else "unknown"
+
+
+def fallback_note(reason: str) -> str:
+    """Returns the note that says why the model could not write the sections."""
+    return _FALLBACK_NOTE.format(reason=safe_reason(reason))
 
 
 def severity_label(severity: Severity) -> str:
@@ -293,12 +307,13 @@ def issue_body(
     state: IssueState,
     sections: Sections | None,
     mention: str,
-    fallback: bool = False,
+    failure: str | None = None,
 ) -> str:
     """Returns the issue body, within GitHub's 65,536-character limit.
 
-    Without sections the body has no section headings. fallback puts
-    FALLBACK_NOTE after the details to say the model could not write them.
+    Without sections the body has no section headings. failure, the reason
+    the model could not write them, puts fallback_note(failure) after the
+    details.
     An urgent detection puts mention on the first line unless it is empty.
     The details text is cut from the end when the body would be too long,
     so the state marker at the end always survives.
@@ -315,7 +330,7 @@ def issue_body(
         f"### {escape_text(heading, inline=True)}\n\n{escape_text(text)}"
         for heading, text in detection.details
     )
-    note = f"{FALLBACK_NOTE}\n\n" if fallback else ""
+    note = "" if failure is None else f"{fallback_note(failure)}\n\n"
     suffix = f"\n\n{_DETAILS_CLOSE}\n\n{note}{render_state(state)}\n"
     if len(prefix) + len(inner) + len(suffix) > _MAX_BODY:
         room = max(0, _MAX_BODY - len(prefix) - len(suffix) - len(_TRUNCATED))
