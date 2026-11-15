@@ -153,8 +153,9 @@ class Bedrock:
             return None
         stop = response.get("stopReason")
         if stop not in _ACCEPTED_STOPS:
-            known = isinstance(stop, str) and _STOP_RE.fullmatch(stop)
-            log_failure(purpose, stop if known else "unknown_stop")
+            if not isinstance(stop, str) or _STOP_RE.fullmatch(stop) is None:
+                stop = "unknown_stop"
+            log_failure(purpose, stop)
             return None
         text = _first_text(response)
         if text is None:
