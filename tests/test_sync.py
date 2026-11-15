@@ -153,10 +153,12 @@ def test_run_sync_starts_revalidation_and_saves_the_job() -> None:
 
 
 def test_updated_body_of_a_near_limit_issue_stays_within_the_limit() -> None:
-    huge = replace(_det("k1"), details=(("Description", "a" * 70000),))
+    # One-character lines let the truncation cut land within a character of
+    # the limit.
+    huge = replace(_det("k1"), details=(("Description", "a\n" * 35000),))
     item = _issue_item(2, keys=("k1",), open=False, state_reason="completed")
     item["body"] = issue_body(huge, _state(item["body"]), None, "@octocat")
-    assert len(item["body"]) == 65536
+    assert len(item["body"]) >= 65535
     github = FakeGitHub(issues=[item])
     pentest = FakePentest(scans={}, revalidation_job="rv9")
     run_sync(TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview())
