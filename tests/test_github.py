@@ -250,12 +250,16 @@ def test_errors_raise_http_status_error() -> None:
 
 
 class _FakeTime:
-    def __init__(self) -> None:
+    def __init__(self, wall: float = 0.0) -> None:
         self.now = 1000.0
+        self.wall = wall
         self.sleeps: list[float] = []
 
     def clock(self) -> float:
         return self.now
+
+    def wall_clock(self) -> float:
+        return self.wall + self.now - 1000.0
 
     def sleep(self, seconds: float) -> None:
         self.sleeps.append(seconds)
@@ -264,7 +268,11 @@ class _FakeTime:
 
 def _paced_github(handler, fake: _FakeTime) -> GitHub:
     return GitHub(
-        _client(handler), "example-org/continuum", sleep=fake.sleep, clock=fake.clock
+        _client(handler),
+        "example-org/continuum",
+        sleep=fake.sleep,
+        clock=fake.clock,
+        now=fake.wall_clock,
     )
 
 
@@ -310,9 +318,8 @@ def test_secondary_limit_with_retry_after_is_retried() -> None:
     assert len(calls) == 2
 
 
-def test_429_waits_until_ratelimit_reset(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = _FakeTime()
-    monkeypatch.setattr("continuum_github.github.time.time", lambda: 5000.0)
+def test_429_waits_until_ratelimit_reset() -> None:
+    fake = _FakeTime(wall=5000.0)
     calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -357,12 +364,9 @@ def test_wait_is_capped_at_15_minutes() -> None:
     assert fake.sleeps == [900.0]
 
 
-def test_retry_after_as_an_http_date_waits_until_that_time(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake = _FakeTime()
+def test_retry_after_as_an_http_date_waits_until_that_time() -> None:
     # 30 seconds before the Retry-After date below.
-    monkeypatch.setattr("continuum_github.github.time.time", lambda: 784111747.0)
+    fake = _FakeTime(wall=784111747.0)
     calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -377,11 +381,8 @@ def test_retry_after_as_an_http_date_waits_until_that_time(
     assert fake.sleeps == [30.0]
 
 
-def test_an_unreadable_retry_after_falls_back_to_the_reset(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake = _FakeTime()
-    monkeypatch.setattr("continuum_github.github.time.time", lambda: 5000.0)
+def test_an_unreadable_retry_after_falls_back_to_the_reset() -> None:
+    fake = _FakeTime(wall=5000.0)
     calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -395,9 +396,8 @@ def test_an_unreadable_retry_after_falls_back_to_the_reset(
     assert fake.sleeps == [42.0]
 
 
-def test_a_past_reset_still_waits_one_second(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = _FakeTime()
-    monkeypatch.setattr("continuum_github.github.time.time", lambda: 5000.0)
+def test_a_past_reset_still_waits_one_second() -> None:
+    fake = _FakeTime(wall=5000.0)
     calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -438,3 +438,35 @@ def test_gives_up_after_three_retries() -> None:
         gh.issues()
     assert len(calls) == 4
     assert fake.sleeps == [1.0, 1.0, 1.0]
+
+
+def _sleeps_after(headers: dict[str, str], wall: float = 5000.0) -> list[float]:
+    fake = _FakeTime(wall=wall)
+    answers = [httpx.Response(429, headers=headers), httpx.Response(200, json=[])]
+    _paced_github(lambda request: answers.pop(0), fake).issues()
+    return fake.sleeps
+
+
+def test_a_past_http_date_still_waits_one_second() -> None:
+    # 70 seconds after the date.
+    headers = {"Retry-After": "Sun, 06 Nov 1994 08:49:37 GMT"}
+    assert _sleeps_after(headers, wall=784111847.0) == [1.0]
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Retry-After": "nan"},
+        {"Retry-After": "inf"},
+        {"Retry-After": "-inf"},
+        {"X-RateLimit-Reset": "nan"},
+    ],
+)
+def test_a_non_finite_wait_falls_back_to_60_seconds(headers: dict[str, str]) -> None:
+    assert _sleeps_after(headers) == [60.0]
+
+
+def test_an_asctime_retry_after_is_read_as_utc() -> None:
+    # 30 seconds before the date, which is GMT like every HTTP date.
+    headers = {"Retry-After": "Sun Nov  6 08:49:37 1994"}
+    assert _sleeps_after(headers, wall=784111747.0) == [30.0]
