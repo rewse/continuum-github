@@ -1,5 +1,7 @@
 """Counts, body, and posting of the English weekly report."""
 
+import base64
+import hashlib
 import re
 import subprocess
 import tempfile
@@ -7,6 +9,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from datetime import timedelta
+from html.parser import HTMLParser
 from pathlib import Path
 
 from continuum_github.bedrock import ModelLike
@@ -49,6 +52,30 @@ _LANG_ATTR_RE = re.compile(
 _EXTERNAL_FONT_HOSTS = ("fonts.googleapis.com", "fonts.gstatic.com")
 _UNSTYLED_SVG_TEXT_RULE = (
     "<style>:where(svg text:not([class]):not([fill])) { fill: var(--text); }</style>"
+)
+# The script lists that kit/render.mjs joins into its <script data-ve-kit>:
+# every kit page gets reply.js and kit.js, and a page with <ve-ask> also
+# ask.js between them.
+_KIT_SCRIPT_FILES = (("reply.js", "kit.js"), ("reply.js", "ask.js", "kit.js"))
+_KIT_SCRIPT_OPEN = "<script data-ve-kit>"
+_SCRIPT_END_RE = re.compile(r"</script", re.IGNORECASE)
+_NO_KIT_ERRORS = (
+    "The rendered page has no kit; add "
+    '<link rel="stylesheet" href="kit.css" data-ve-kit> to <head>.'
+)
+# Model-written <meta http-equiv> values the page must not keep: refresh
+# navigates away without script, which no CSP blocks, and a CSP of its own
+# would only confuse readers of the page.
+_DROPPED_HTTP_EQUIV = frozenset({"content-security-policy", "refresh"})
+_WS = r"[\t\n\f\r ]"
+_ATTR = rf"""(?:{_WS}+[^\t\n\f\r "'>/=]+(?:{_WS}*={_WS}*(?:"[^"]*"|'[^']*'|[^\t\n\f\r "'=<>`]+))?)"""
+# The longest start of the page that a browser parses as nothing but a
+# doctype, an <html> tag, and a <head> tag, so that no element precedes a
+# meta inserted at its end.
+_HEAD_START_RE = re.compile(
+    rf"\A\ufeff?{_WS}*(?:<!doctype{_WS}+html{_WS}*>{_WS}*)?"
+    rf"(?:<html{_ATTR}*{_WS}*>{_WS}*)?(?:<head{_ATTR}*{_WS}*>)?",
+    re.IGNORECASE,
 )
 RENDER_TIMEOUT_SECONDS = 300
 # Keeps the prompt that carries render errors back to the model within bounds.
@@ -574,6 +601,125 @@ def set_html_lang(html: str, language: str) -> str:
     return html[: match.start()] + tag + html[match.end() :]
 
 
+def _kit_scripts(skill_dir: Path) -> list[str]:
+    """Returns the texts of the script elements that kit/render.mjs can inline.
+
+    Each text joins the files of one _KIT_SCRIPT_FILES entry with line
+    breaks after a leading one and escapes "</script" as render.mjs does.
+    An entry with a missing file is left out.
+    """
+    texts = []
+    for names in _KIT_SCRIPT_FILES:
+        try:
+            js = "\n".join(
+                (skill_dir / "kit" / name).read_bytes().decode("utf-8")
+                for name in names
+            )
+        except (OSError, UnicodeDecodeError):
+            continue
+        texts.append("\n" + _SCRIPT_END_RE.sub(r"<\\/script", js))
+    return texts
+
+
+def _script_hash(text: str) -> str:
+    """Returns the CSP hash source of an inline script with text.
+
+    The browser hashes the script after its parser turns CR LF and CR into
+    LF, so the text is normalized the same way first.
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    return f"'sha256-{base64.b64encode(digest).decode('ascii')}'"
+
+
+class _DroppedMetaFinder(HTMLParser):
+    """Collects the spans of the <meta> tags to drop, as the parser reads them.
+
+    The parser skips script contents and comments, reads quoted attribute
+    values that contain ">", and decodes character references in values, so
+    "&#114;efresh" counts as refresh.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.spans: list[tuple[int, int, str]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "meta" and any(
+            name == "http-equiv"
+            and (value or "").strip().lower() in _DROPPED_HTTP_EQUIV
+            for name, value in attrs
+        ):
+            line, column = self.getpos()
+            self.spans.append((line, column, self.get_starttag_text() or ""))
+
+
+def _drop_meta(html: str) -> str:
+    """Removes the <meta> tags whose http-equiv is in _DROPPED_HTTP_EQUIV."""
+    finder = _DroppedMetaFinder()
+    finder.feed(html)
+    finder.close()
+    line_starts = [0] + [m.end() for m in re.finditer("\n", html)]
+    for line, column, text in reversed(finder.spans):
+        start = line_starts[line - 1] + column
+        if text and html.startswith(text, start):
+            html = html[:start] + html[start + len(text) :]
+    return html
+
+
+def add_content_security_policy(html: str, skill_dir: Path) -> str | None:
+    """Returns the rendered page with a CSP that runs only the kit's script.
+
+    Returns None when the page has no script element that kit/render.mjs
+    builds from the kit files in skill_dir, which is the case for a source
+    that render.mjs writes as given. Model-written <meta> refresh and CSP
+    tags are removed first. The CSP meta goes before every element of the
+    page, so the browser applies it to all of them, followed by a charset
+    meta that keeps the charset within the bytes browsers scan for it.
+    """
+    html = _drop_meta(html)
+    scripts = [
+        text
+        for text in _kit_scripts(skill_dir)
+        if f"{_KIT_SCRIPT_OPEN}{text}</script>" in html
+    ]
+    if not scripts:
+        return None
+    policy = "; ".join(
+        (
+            # Nothing loads unless a directive below allows it: no fetch,
+            # frame, object, media, or worker.
+            "default-src 'none'",
+            # Only the kit's inline scripts run. With hashes and no
+            # 'unsafe-inline', other inline scripts, on* attributes, and
+            # javascript: URLs are blocked too.
+            "script-src " + " ".join(_script_hash(text) for text in scripts),
+            # The kit inlines its CSS in <style data-ve-kit>, Mermaid
+            # drawings carry style attributes, and the model writes its own
+            # styles. url() in CSS still obeys img-src and font-src.
+            "style-src 'unsafe-inline'",
+            # The favicon that render.mjs adds is a data: URL. External
+            # images, which could carry page content in their URLs, are
+            # blocked.
+            "img-src data:",
+            # The Google Fonts links are stripped, so the page uses local
+            # fonts, and only embedded fonts may load.
+            "font-src data:",
+            # A <base> tag cannot redirect the page's relative URLs.
+            "base-uri 'none'",
+            # A form cannot submit the page's content anywhere.
+            "form-action 'none'",
+        )
+    )
+    meta = (
+        f'<meta http-equiv="Content-Security-Policy" content="{policy}">'
+        '<meta charset="utf-8">'
+    )
+    match = _HEAD_START_RE.match(html)
+    end = match.end() if match else 0
+    return html[:end] + meta + html[end:]
+
+
 def build_visual_report(
     model: ModelLike,
     data: WeeklyData,
@@ -588,8 +734,10 @@ def build_visual_report(
     render_failed when no source renders.
 
     The model writes a page source in the language of the locale language,
-    and visual-explainer renders it. When rendering fails, the model
-    rewrites the source once with the render errors. Leaves no file at out
+    and visual-explainer renders it. A rendered page without the kit's script
+    counts as a render failure, and the page that is kept carries a CSP from
+    add_content_security_policy. When rendering fails, the model rewrites
+    the source once with the render errors. Leaves no file at out
     when no page renders, including one left by an earlier run. The render
     output is never printed, because it can repeat finding details.
     """
@@ -608,7 +756,12 @@ def build_visual_report(
             if errors is None:
                 html = out.read_text(encoding="utf-8")
                 html = color_unstyled_svg_text(strip_external_fonts(html))
-                out.write_text(set_html_lang(html, language), encoding="utf-8")
-                return None
+                html = add_content_security_policy(
+                    set_html_lang(html, language), skill_dir
+                )
+                if html is not None:
+                    out.write_text(html, encoding="utf-8")
+                    return None
+                errors = _NO_KIT_ERRORS
     out.unlink(missing_ok=True)
     return failure
