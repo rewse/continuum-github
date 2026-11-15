@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from email.utils import parsedate_to_datetime
 from typing import Any, Literal
 
 import httpx
@@ -12,6 +13,7 @@ _HEADERS = {
 }
 _MUTATING_METHODS = frozenset({"PATCH", "POST"})
 _DEFAULT_WAIT = 60.0
+_MIN_WAIT = 1.0
 _MAX_WAIT = 15 * 60.0
 _MAX_RETRIES = 3
 _DUPLICATE_QUERY = """
@@ -37,6 +39,11 @@ query($owner: String!, $name: String!, $number: Int!) {
 
 
 def _is_rate_limited(response: httpx.Response) -> bool:
+    """Returns whether response is a primary or secondary rate limit.
+
+    GitHub sometimes answers a secondary rate limit with a plain 403 that
+    has no Retry-After header, so the message is checked as well.
+    """
     if response.status_code == 429:
         return True
     if response.status_code != 403:
@@ -52,19 +59,43 @@ def _is_rate_limited(response: httpx.Response) -> bool:
     return isinstance(message, str) and "rate limit" in message.lower()
 
 
-def _retry_delay(response: httpx.Response, clock: Callable[[], float]) -> float:
-    """Returns seconds to wait: Retry-After, else rate-limit reset, else 60."""
-    delay = _DEFAULT_WAIT
-    retry_after = response.headers.get("Retry-After")
-    reset = response.headers.get("X-RateLimit-Reset")
+def _seconds_until(value: str, now: float) -> float | None:
+    """Returns the wait a Retry-After value asks for, or None if unreadable.
+
+    HTTP allows either a number of seconds or a date.
+    """
     try:
-        if retry_after is not None:
-            delay = float(retry_after)
-        elif reset is not None:
-            delay = float(reset) - time.time()
+        return float(value)
     except ValueError:
+        pass
+    try:
+        return parsedate_to_datetime(value).timestamp() - now
+    except (TypeError, ValueError):
+        return None
+
+
+def _retry_delay(response: httpx.Response, clock: Callable[[], float]) -> float:
+    """Returns seconds to wait before retrying a rate-limited request.
+
+    The wait is Retry-After as seconds or an HTTP date, else the rate-limit
+    reset, else 60 seconds, kept between 1 second and 15 minutes. The lower
+    bound keeps a reset in the past, as with a skewed clock, from using up
+    every retry at once.
+    """
+    now = time.time()
+    delay = None
+    retry_after = response.headers.get("Retry-After")
+    if retry_after is not None:
+        delay = _seconds_until(retry_after, now)
+    reset = response.headers.get("X-RateLimit-Reset")
+    if delay is None and reset is not None:
+        try:
+            delay = float(reset) - now
+        except ValueError:
+            delay = None
+    if delay is None:
         delay = _DEFAULT_WAIT
-    return min(max(delay, 0.0), _MAX_WAIT)
+    return min(max(delay, _MIN_WAIT), _MAX_WAIT)
 
 
 class GitHub:

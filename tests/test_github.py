@@ -357,6 +357,59 @@ def test_wait_is_capped_at_15_minutes() -> None:
     assert fake.sleeps == [900.0]
 
 
+def test_retry_after_as_an_http_date_waits_until_that_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _FakeTime()
+    # 30 seconds before the Retry-After date below.
+    monkeypatch.setattr("continuum_github.github.time.time", lambda: 784111747.0)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(
+                429, headers={"Retry-After": "Sun, 06 Nov 1994 08:49:37 GMT"}
+            )
+        return httpx.Response(200, json=[])
+
+    _paced_github(handler, fake).issues()
+    assert fake.sleeps == [30.0]
+
+
+def test_an_unreadable_retry_after_falls_back_to_the_reset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _FakeTime()
+    monkeypatch.setattr("continuum_github.github.time.time", lambda: 5000.0)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            headers = {"Retry-After": "soon", "X-RateLimit-Reset": "5042"}
+            return httpx.Response(429, headers=headers)
+        return httpx.Response(200, json=[])
+
+    _paced_github(handler, fake).issues()
+    assert fake.sleeps == [42.0]
+
+
+def test_a_past_reset_still_waits_one_second(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeTime()
+    monkeypatch.setattr("continuum_github.github.time.time", lambda: 5000.0)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"X-RateLimit-Reset": "10"})
+        return httpx.Response(200, json=[])
+
+    _paced_github(handler, fake).issues()
+    assert fake.sleeps == [1.0]
+
+
 def test_plain_403_raises_immediately() -> None:
     fake = _FakeTime()
     calls = []
