@@ -37,6 +37,10 @@ _DETAILS_CLOSE = "</details>"
 _SECTION_HEADINGS = ("Summary", "Why it matters", "Risk if left unresolved")
 _TITLE_TAG_RE = re.compile(r"\A\[[A-Z]+\] ")
 _SEVERITY_ROW_RE = re.compile(r"^\| Severity \| [^|\n]* \|$", re.MULTILINE)
+_FENCE_RE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
+_BLANK_RE = re.compile(r"(\r?\n[ \t]*\r?\n)")
+_TICKS_RE = re.compile(r"`+")
+_MENTION_RE = re.compile(r"(?<![A-Za-z0-9`/@])@(?=[A-Za-z0-9])")
 
 
 @dataclass(frozen=True)
@@ -137,13 +141,70 @@ def initial_state(detection: Detection) -> IssueState:
     )
 
 
-def _escape(text: str) -> str:
-    """Neutralizes HTML so untrusted text cannot open comments or tags."""
-    return text.replace("<", "&lt;")
+def _inert(text: str) -> str:
+    return _MENTION_RE.sub("@&#8203;", text).replace("![", "!\\[")
+
+
+def _spans(text: str) -> str:
+    # A run of backticks opens a code span only when the same run closes it.
+    out, start, pos = [], 0, 0
+    while (run := _TICKS_RE.search(text, pos)) is not None:
+        close = next(
+            (
+                c
+                for c in _TICKS_RE.finditer(text, run.end())
+                if c.group() == run.group()
+            ),
+            None,
+        )
+        if close is None:
+            pos = run.end()
+            continue
+        out += [_inert(text[start : run.start()]), text[run.start() : close.end()]]
+        start = pos = close.end()
+    out.append(_inert(text[start:]))
+    return "".join(out)
+
+
+def _paragraphs(text: str) -> str:
+    # Code spans never cross a blank line.
+    return "".join(_spans(part) for part in _BLANK_RE.split(text))
+
+
+def escape_text(text: str, *, inline: bool = False) -> str:
+    """Neutralizes untrusted text for an issue body.
+
+    Outside code, mentions become inert with a zero-width space and images
+    become plain text, so the text cannot notify users or load remote
+    images. Everywhere, including code, `<` is escaped so the text cannot
+    open comments or tags. Code is recognized more narrowly than CommonMark
+    does: text that GitHub renders as code but this misses only shows the
+    inserted characters, while the reverse would leave a mention live.
+    inline is for table cells and one-line items, where fences do not exist.
+    """
+    if inline:
+        return _spans(text).replace("<", "&lt;")
+    out, prose, fence = [], [], None
+    for line in text.splitlines(keepends=True):
+        body = line.rstrip("\r\n")
+        if fence is None:
+            match = _FENCE_RE.fullmatch(body)
+            if match is None or (match[1][0] == "`" and "`" in match[2]):
+                prose.append(line)
+                continue
+            out.append(_paragraphs("".join(prose)))
+            prose, fence = [], match[1]
+        elif re.fullmatch(
+            rf" {{0,3}}{re.escape(fence[0])}{{{len(fence)},}}[ \t]*", body
+        ):
+            fence = None
+        out.append(line)
+    out.append(_paragraphs("".join(prose)))
+    return "".join(out).replace("<", "&lt;")
 
 
 def _cell(text: str) -> str:
-    return _escape(" ".join(text.split())).replace("|", "\\|")
+    return escape_text(" ".join(text.split()), inline=True).replace("|", "\\|")
 
 
 def _table(detection: Detection) -> str:
@@ -166,7 +227,7 @@ def _table(detection: Detection) -> str:
 def _sections(sections: Sections) -> str:
     texts = (sections.summary, sections.why, sections.risk)
     return "\n\n".join(
-        f"## {heading}\n\n{_escape(text.strip())}"
+        f"## {heading}\n\n{escape_text(text.strip())}"
         for heading, text in zip(_SECTION_HEADINGS, texts, strict=True)
     )
 
@@ -195,7 +256,7 @@ def issue_body(
     head.append(_DETAILS_OPEN)
     prefix = "\n\n".join(head) + "\n\n"
     inner = "\n\n".join(
-        f"### {_escape(heading)}\n\n{_escape(text)}"
+        f"### {escape_text(heading, inline=True)}\n\n{escape_text(text)}"
         for heading, text in detection.details
     )
     note = f"{FALLBACK_NOTE}\n\n" if fallback else ""

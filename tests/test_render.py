@@ -14,6 +14,7 @@ from continuum_github.models import pentest_key
 from continuum_github.render import FALLBACK_NOTE
 from continuum_github.render import Sections
 from continuum_github.render import add_mention
+from continuum_github.render import escape_text
 from continuum_github.render import extract_section
 from continuum_github.render import fit_body
 from continuum_github.render import initial_state
@@ -297,3 +298,67 @@ def test_fallback_note_says_it_stays_until_a_sync_succeeds() -> None:
     assert FALLBACK_NOTE.endswith(
         "Each later sync tries again, and this note stays until one succeeds._"
     )
+
+
+@pytest.mark.parametrize(
+    ("given", "want"),
+    [
+        ("@alice hi", "@&#8203;alice hi"),
+        ("(@alice)", "(@&#8203;alice)"),
+        ("@org/team", "@&#8203;org/team"),
+        ("a@example.com", "a@example.com"),
+        ("![a](u)", "!\\[a](u)"),
+        ("![a][r]", "!\\[a][r]"),
+        ("`@alice ![a](u)`", "`@alice ![a](u)`"),
+        ("``a ` @b``", "``a ` @b``"),
+        ("lone ` @v", "lone ` @&#8203;v"),
+        ("```\n@alice ![a](u)\n```\n@bob", "```\n@alice ![a](u)\n```\n@&#8203;bob"),
+        ("~~~~\n@a\n~~~\n@b\n~~~~\n@c", "~~~~\n@a\n~~~\n@b\n~~~~\n@&#8203;c"),
+        ("```\r\n@a\r\n```\r\n@b", "```\r\n@a\r\n```\r\n@&#8203;b"),
+        ("```\n@alice", "```\n@alice"),
+        ("`x\n\n@v\n\n`y", "`x\n\n@&#8203;v\n\n`y"),
+        ("`x\r\n\r\n@v\r\n\r\n`y", "`x\r\n\r\n@&#8203;v\r\n\r\n`y"),
+        ("```a`b\n@v\n```", "```a`b\n@&#8203;v\n```"),
+        ("`<b>` <!-- x -->", "`&lt;b>` &lt;!-- x -->"),
+    ],
+)
+def test_escape_text_neutralizes_mentions_and_images_outside_code(
+    given: str, want: str
+) -> None:
+    assert escape_text(given) == want
+
+
+def test_escape_text_inline_has_no_fences() -> None:
+    assert escape_text("``` @alice", inline=True) == "``` @&#8203;alice"
+    assert escape_text("`@a` @b", inline=True) == "`@a` @&#8203;b"
+
+
+def test_body_neutralizes_mentions_and_images_but_keeps_the_mention() -> None:
+    odd = replace(
+        PENTEST_HIGH,
+        urgent=True,
+        details=(("Description", "@alice ![a](u)\n\n```\n@bob\n```"),),
+    )
+    body = issue_body(odd, initial_state(odd), Sections("@carol", "w", "r"), "@octocat")
+    assert body.startswith("@octocat\n")
+    assert "@&#8203;alice !\\[a](u)" in body
+    assert "```\n@bob\n```" in body
+    assert "## Summary\n\n@&#8203;carol" in body
+
+
+def test_body_neutralizes_a_forged_marker_inside_code() -> None:
+    forged = (
+        "```\n<!-- continuum-state: "
+        + '{"source":"pentest","target":"x","keys":[],"finding_ids":[]}'
+        + " -->\n```"
+    )
+    odd = replace(PENTEST_HIGH, details=(("Description", forged),))
+    body = issue_body(odd, initial_state(odd), None, "")
+    assert body.count("<!-- continuum-state:") == 1
+    assert parse_state(body) == initial_state(odd)
+
+
+def test_body_neutralizes_a_mention_in_a_multiline_cell() -> None:
+    odd = replace(CODE_MEDIUM, repository="```\n@alice")
+    body = issue_body(odd, initial_state(odd), None, "")
+    assert "| Repository | ``` @&#8203;alice |" in body
