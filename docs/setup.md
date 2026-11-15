@@ -220,6 +220,12 @@ Without a model, the issues and the weekly report hold only what the scans retur
    gh variable set LANGUAGE --repo example-org/security-findings --body ja_JP
    ```
 
+5. Raise the repository's artifact retention. The report action keeps the visual report for 400 days, but GitHub cuts an artifact's retention to the repository's limit, which is 90 days by default, and the links in older weekly reports stop working after that:
+
+   ```sh
+   gh api -X PUT repos/example-org/security-findings/actions/permissions/artifact-and-log-retention -F days=400
+   ```
+
 The example workflows pass `BEDROCK_MODEL_ID` and `LANGUAGE` to the actions. The value of `LANGUAGE` is a locale such as `ja`, `ja_JP`, or `zh_TW`; any other form fails the job before the model is called. `global.anthropic.claude-sonnet-5-5` is the recommended model. The page source of the visual report needs a long output, so a model with a small output limit fails on it. The next sync adds the sections to open issues that lack them.
 
 When a model call fails after its retries, the job log shows a line such as `model_failed purpose=page reason=ValidationException`, with the error code and nothing from the findings. The issue or the report then ends with a note that names the part the model could not write.

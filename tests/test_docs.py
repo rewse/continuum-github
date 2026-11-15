@@ -36,3 +36,13 @@ def test_docs_recommend_the_global_inference_profile() -> None:
         in setup
     )
     assert "runs only in US Regions" not in setup
+
+
+def test_setup_raises_the_artifact_retention_to_the_report_action_days() -> None:
+    setup = (ROOT / "docs/setup.md").read_text()
+    action = (ROOT / "report/action.yml").read_text()
+    assert "retention-days: 400" in action
+    assert (
+        "gh api -X PUT repos/example-org/security-findings/actions/permissions/"
+        "artifact-and-log-retention -F days=400"
+    ) in setup
