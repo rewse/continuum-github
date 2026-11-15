@@ -15,6 +15,7 @@ from botocore.exceptions import ClientError
 from continuum_github.config import DEFAULT_LANGUAGE
 from continuum_github.models import Detection
 from continuum_github.models import Severity
+from continuum_github.pentest import ATTACK_SCRIPT
 from continuum_github.render import Sections
 
 if TYPE_CHECKING:
@@ -39,6 +40,12 @@ READ_TIMEOUT = 600
 
 _FENCE_RE = re.compile(r"\A```(?:json)?\s*\n(.*?)\n?```\Z", re.DOTALL)
 _SECTION_KEYS = ("summary", "why", "risk")
+# Stop reasons whose answer is cut short. Bedrock's safety filter stops with
+# content_filtered, before or partway through the answer.
+_REJECTED_STOPS = frozenset({"content_filtered", "max_tokens"})
+# The safety filter blocks prompts that carry an attack script, and the
+# sections can be written from the other details.
+_SECTIONS_SKIPPED = frozenset({ATTACK_SCRIPT})
 
 
 class ConverseClient(Protocol):
@@ -141,8 +148,9 @@ class Bedrock:
         except BotoCoreError as error:
             log_failure(purpose, type(error).__name__)
             return None
-        if response.get("stopReason") == "max_tokens":
-            log_failure(purpose, "max_tokens")
+        stop = response.get("stopReason")
+        if stop in _REJECTED_STOPS:
+            log_failure(purpose, stop)
             return None
         text = _first_text(response)
         if text is None:
@@ -168,6 +176,8 @@ def _sections_prompt(detection: Detection, language: str) -> str:
         f"Target: {detection.target}",
     ]
     for heading, text in detection.details:
+        if heading in _SECTIONS_SKIPPED:
+            continue
         lines += ["", f"### {heading}", "", text]
     lines += [
         "",

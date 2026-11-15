@@ -1,5 +1,6 @@
 """Tests for the Bedrock wrapper and the summary sections it writes."""
 
+from dataclasses import replace
 from datetime import UTC
 from datetime import datetime
 from typing import Any
@@ -101,6 +102,15 @@ def test_ask_rejects_a_truncated_answer(capsys) -> None:
     )
 
 
+def test_ask_rejects_a_filtered_answer(capsys) -> None:
+    text = "<<<CONTINUUM-BEGIN>>>a<<<CONTINUUM-END>>>"
+    client = FakeClient(_response(text, "content_filtered"))
+    assert Bedrock(client, "m1").ask("p", "sections") is None
+    assert capsys.readouterr().err == (
+        "model_failed purpose=sections reason=content_filtered\n"
+    )
+
+
 def test_ask_rejects_answers_without_text_or_markers(capsys) -> None:
     empty = {"output": {"message": {"content": []}}, "stopReason": "end_turn"}
     assert Bedrock(FakeClient(empty), "m1").ask("p", "sections") is None
@@ -174,6 +184,24 @@ def test_finding_sections_prompt_carries_the_detection() -> None:
         assert text in prompt
     assert "The q parameter is echoed." in prompt
     assert model.purposes == ["sections"]
+
+
+def test_finding_sections_prompt_leaves_out_the_attack_script() -> None:
+    detection = replace(
+        DETECTION,
+        details=(
+            ("Description", "The q parameter is echoed."),
+            ("Attack script", "curl attack-step"),
+            ("Reasoning", "No sign-in is needed."),
+        ),
+    )
+    model = FakeModel(None)
+    finding_sections(model, detection)
+    (prompt,) = model.prompts
+    assert "The q parameter is echoed." in prompt
+    assert "No sign-in is needed." in prompt
+    assert "Attack script" not in prompt
+    assert "attack-step" not in prompt
 
 
 def test_finding_sections_prompt_names_the_locale() -> None:
