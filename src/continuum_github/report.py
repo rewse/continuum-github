@@ -17,6 +17,7 @@ from continuum_github.models import TargetScan
 from continuum_github.records import BOT
 from continuum_github.records import Record
 from continuum_github.render import SOURCE_LABELS
+from continuum_github.render import escape_text
 from continuum_github.render import extract_section
 from continuum_github.render import strip_severity_tag
 from continuum_github.sync import GitHubLike
@@ -211,13 +212,8 @@ def build_weekly(
     )
 
 
-def _escape(text: str) -> str:
-    """Neutralizes HTML so untrusted text cannot open comments or tags."""
-    return text.replace("<", "&lt;")
-
-
 def _cell(text: str) -> str:
-    return _escape(" ".join(text.split())).replace("|", "\\|")
+    return escape_text(" ".join(text.split()), inline=True).replace("|", "\\|")
 
 
 def _heading(severity: Severity) -> str:
@@ -233,8 +229,10 @@ def _table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
 def _line(item: ReportItem, status: str) -> str:
     # The tags already carry the severity, so the title's own tag is dropped.
     tags = f"[{status}] [{item.severity.lower()}] [{item.source}]"
-    title = _escape(" ".join(strip_severity_tag(item.title).split()))
-    return f"- #{item.number} {tags} {_escape(item.repository)}: {title}"
+    title = escape_text(" ".join(strip_severity_tag(item.title).split()), inline=True)
+    return (
+        f"- #{item.number} {tags} {escape_text(item.repository, inline=True)}: {title}"
+    )
 
 
 def _open_line(item: ReportItem) -> str:
@@ -264,7 +262,7 @@ def _head(data: WeeklyData, summaries: Mapping[Severity, str]) -> str:
         summary = summaries.get(severity)
         if not summary:
             continue
-        parts.append(f"## {_heading(severity)}\n\n{_escape(summary.strip())}")
+        parts.append(f"## {_heading(severity)}\n\n{escape_text(summary.strip())}")
     repositories = (
         _table(
             ("Repository", *(_heading(severity) for severity in severities)),
@@ -278,7 +276,9 @@ def _head(data: WeeklyData, summaries: Mapping[Severity, str]) -> str:
     )
     parts.append(f"## Repositories\n\n{repositories}")
     if data.incomplete:
-        lines = "\n".join(f"- {_escape(name)}" for name in data.incomplete)
+        lines = "\n".join(
+            f"- {escape_text(name, inline=True)}" for name in data.incomplete
+        )
         parts.append(f"## Incomplete scans\n\n{lines}")
     parts.append(f"{HTML_PART}: {HTML_URL_PLACEHOLDER}")
     return "\n\n".join(parts)

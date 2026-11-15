@@ -391,6 +391,13 @@ def test_titles_and_summaries_are_escaped() -> None:
     assert "<!-- x" not in body and "&lt;!-- x" in body
 
 
+def test_titles_and_summaries_keep_mentions_and_images_inert() -> None:
+    data = build_weekly([_rec(1, "severity:high", title="@alice ![a](u)")], [], NOW)
+    body, _ = render_weekly(data, {Severity.HIGH: "@bob"})
+    assert "@&#8203;alice !\\[a](u)" in body
+    assert "## High\n\n@&#8203;bob" in body
+
+
 def test_open_item_reads_the_summary_section() -> None:
     record = _rec(
         1, "severity:high", body="## Summary\n\nXSS in q.\n\n## Why it matters\n\nw"
