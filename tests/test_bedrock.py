@@ -111,6 +111,30 @@ def test_ask_rejects_a_filtered_answer(capsys) -> None:
     )
 
 
+def test_ask_accepts_only_end_turn_and_stop_sequence(capsys) -> None:
+    text = "<<<CONTINUUM-BEGIN>>>a<<<CONTINUUM-END>>>"
+    for stop in ("end_turn", "stop_sequence"):
+        model = Bedrock(FakeClient(_response(text, stop)), "m1")
+        assert model.ask("p", "summary") == "a"
+    model = Bedrock(FakeClient(_response(text, "guardrail_intervened")), "m1")
+    assert model.ask("p", "summary") is None
+    assert capsys.readouterr().err == (
+        "model_failed purpose=summary reason=guardrail_intervened\n"
+    )
+
+
+def test_ask_logs_unknown_stop_for_a_missing_or_odd_stop_reason(capsys) -> None:
+    text = "<<<CONTINUUM-BEGIN>>>a<<<CONTINUUM-END>>>"
+    missing = {"output": {"message": {"content": [{"text": text}]}}}
+    assert Bedrock(FakeClient(missing), "m1").ask("p", "summary") is None
+    odd = _response(text, "Bad Value!")
+    assert Bedrock(FakeClient(odd), "m1").ask("p", "summary") is None
+    assert capsys.readouterr().err.splitlines() == [
+        "model_failed purpose=summary reason=unknown_stop",
+        "model_failed purpose=summary reason=unknown_stop",
+    ]
+
+
 def test_ask_rejects_answers_without_text_or_markers(capsys) -> None:
     empty = {"output": {"message": {"content": []}}, "stopReason": "end_turn"}
     assert Bedrock(FakeClient(empty), "m1").ask("p", "sections") is None

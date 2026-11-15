@@ -40,9 +40,12 @@ READ_TIMEOUT = 600
 
 _FENCE_RE = re.compile(r"\A```(?:json)?\s*\n(.*?)\n?```\Z", re.DOTALL)
 _SECTION_KEYS = ("summary", "why", "risk")
-# Stop reasons whose answer is cut short. Bedrock's safety filter stops with
-# content_filtered, before or partway through the answer.
-_REJECTED_STOPS = frozenset({"content_filtered", "max_tokens"})
+# Stop reasons whose answer is complete. Any other reason, such as
+# content_filtered from Bedrock's safety filter or max_tokens, means the
+# answer was cut short or is not plain text.
+_ACCEPTED_STOPS = frozenset({"end_turn", "stop_sequence"})
+# A stop reason is logged only when it looks like one of AWS's enum values.
+_STOP_RE = re.compile(r"[a-z_]{1,40}")
 # The safety filter blocks prompts that carry an attack script, and the
 # sections can be written from the other details.
 _SECTIONS_SKIPPED = frozenset({ATTACK_SCRIPT})
@@ -149,8 +152,9 @@ class Bedrock:
             log_failure(purpose, type(error).__name__)
             return None
         stop = response.get("stopReason")
-        if stop in _REJECTED_STOPS:
-            log_failure(purpose, stop)
+        if stop not in _ACCEPTED_STOPS:
+            known = isinstance(stop, str) and _STOP_RE.fullmatch(stop)
+            log_failure(purpose, stop if known else "unknown_stop")
             return None
         text = _first_text(response)
         if text is None:
