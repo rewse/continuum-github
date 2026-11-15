@@ -406,6 +406,8 @@ git commit -m "ci: list breaking changes first in the release notes"
 
 ### Task 6: 検証とマージ
 
+> Task 7 を先に実行する。Task 6 は Task 7 のあとに実行する。
+
 **Files:**
 - Move: `docs/superpowers/specs/2026-11-15-issue-hardening-design.md` → `docs/superpowers/archive/specs/`
 - Move: `docs/superpowers/plans/2026-11-15-issue-hardening.md` → `docs/superpowers/archive/plans/`
@@ -433,3 +435,59 @@ git commit -m "Merge branch 'fix/issue-hardening'"
 
 Run: `uv run pytest -q`
 Expected: 全件 PASS。push はしない。
+
+### Task 7: 全体レビューで見つかった無害化の抜け道を塞ぐ
+
+全体レビューで、`escape_text` が CommonMark より広くコードとみなす場合と、文字参照の mention が残る場合が見つかった。spec の「3. Markdown の無害化」を改めたので、それに合わせる。Task 6 より先に実行する。
+
+**Files:**
+- Modify: `src/continuum_github/render.py`（`_FENCE_RE`、`_BLANK_RE`、`_inert`、`_paragraphs`、`escape_text`）
+- Test: `tests/test_render.py`
+
+**Interfaces:**
+- Consumes: Task 3 の `escape_text(text: str, *, inline: bool = False) -> str`
+- Produces: 同じシグネチャ。動作だけ変わる。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`test_escape_text_neutralizes_mentions_and_images_outside_code` のパラメーターに足す。
+
+```python
+("&#64;alice &#x40;bob &commat;carol", "&amp;#64;alice &amp;#x40;bob &amp;commat;carol"),
+("a & b `&#64;c`", "a &amp; b `&#64;c`"),
+("`a\n- @alice\n`", "`a\n- @&#8203;alice\n`"),
+("- a\n\n  ```\n@alice\n  ```", "- a\n\n  ```\n@&#8203;alice\n  ```"),
+("hello \x1c```\n@alice\n```", "hello \x1c```\n@&#8203;alice\n```"),
+("```\r@a\r```\r@b", "```\r@a\r```\r@&#8203;b"),
+```
+
+`test_escape_text_inline_has_no_fences` に足す。
+
+```python
+assert escape_text("`x\n\n@v\n\n`", inline=True) == "`x\n\n@&#8203;v\n\n`"
+```
+
+- [ ] **Step 2: 失敗を確かめる**
+
+Run: `uv run pytest -q tests/test_render.py`
+Expected: 新しいパラメーター 5 件と inline のテストが FAIL。`\r` だけの改行のケースは今の実装でも通る。
+
+- [ ] **Step 3: 実装する**
+
+- `_FENCE_RE` を `` re.compile(r"(`{3,}|~{3,})(.*)") `` にし、インデントされた開きフェンスを認めない。閉じフェンスの正規表現は今のまま 0〜3 個の空白を認める。
+- `_BLANK_RE` を `_LINE_RE = re.compile(r"(?<=\n)|(?<=\r)(?!\n)")` に置き換え、`re.split` で `\r\n`、`\r`、`\n` の後ろだけで行を分ける。`escape_text` の `text.splitlines(keepends=True)` も `_lines(text)`（`re.split(_LINE_RE, text)` から空文字列を除いたもの）にする。
+- `_paragraphs` を `_by_line(text: str) -> str` にし、行ごとに `_spans` を通す。`inline=True` の場合も `_by_line` を通す。
+- `_inert` は先に `&` を `&amp;` にし、そのあとで mention と画像を置き換える。
+- docstring に、文字参照を `&amp;` で無効にすること、コードスパンを 1 行に限ること、インデントされたフェンスと Unicode の行区切りを扱わないことを、CommonMark より狭くする理由とともに書く。
+
+- [ ] **Step 4: 通ることを確かめる**
+
+Run: `uv run pytest -q`
+Expected: 全件 PASS
+
+- [ ] **Step 5: コミットする**
+
+```bash
+git add src/continuum_github/render.py tests/test_render.py docs/superpowers/specs/2026-11-15-issue-hardening-design.md docs/superpowers/plans/2026-11-15-issue-hardening.md
+git commit -m "fix: close the Markdown escaping gaps the final review found"
+```

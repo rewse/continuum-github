@@ -730,6 +730,38 @@ def test_fill_sections_leaves_an_already_marked_issue_alone() -> None:
     assert github.updates == []
 
 
+OLD_NOTE = (
+    "_Bedrock could not write the Summary, Why it matters, and Risk if left "
+    "unresolved sections, so this issue shows the scanner's details only. "
+    "A later sync tries again._"
+)
+
+
+def test_fill_sections_rewrites_the_old_fallback_note_once() -> None:
+    detection = _det("k1")
+    state = IssueState(
+        source="pentest",
+        target="weekly-x",
+        keys=("k1",),
+        finding_ids=("f1",),
+        pentest_id="pt-1",
+    )
+    item = _issue_item(1, keys=("k1",))
+    body = issue_body(detection, state, None, "", fallback=True)
+    item["body"] = body.replace(FALLBACK_NOTE, OLD_NOTE)
+    github = FakeGitHub(issues=[item])
+    pentest = FakePentest(scans={}, detections={"f1": detection})
+    assert (
+        fill_sections(
+            TARGETS, github, pentest, FakeCodeVuln(), FakeCodeReview(), FakeModel(None)
+        )
+        == 0
+    )
+    assert list(github.bodies) == [1]
+    assert github.bodies[1].count(FALLBACK_NOTE) == 1
+    assert OLD_NOTE not in github.bodies[1]
+
+
 def test_fill_sections_adds_headings_to_a_body_without_them() -> None:
     detection = _det("k1")
     state = IssueState(

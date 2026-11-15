@@ -26,7 +26,7 @@ REVALIDATION_FAILED = "Revalidation did not complete."
 FALLBACK_NOTE = (
     "_Bedrock could not write the Summary, Why it matters, and Risk if left "
     "unresolved sections, so this issue shows the scanner's details only. "
-    "A later sync tries again._"
+    "Each later sync tries again, and this note stays until one succeeds._"
 )
 
 _MAX_BODY = 65536
@@ -37,6 +37,12 @@ _DETAILS_CLOSE = "</details>"
 _SECTION_HEADINGS = ("Summary", "Why it matters", "Risk if left unresolved")
 _TITLE_TAG_RE = re.compile(r"\A\[[A-Z]+\] ")
 _SEVERITY_ROW_RE = re.compile(r"^\| Severity \| [^|\n]* \|$", re.MULTILINE)
+_FENCE_RE = re.compile(r"(`{3,}|~{3,})(.*)")
+# Splits after \r\n, \r, or \n only; str.splitlines also splits on
+# separators such as \x1c and \u2028 that CommonMark keeps inside a line.
+_LINE_RE = re.compile(r"(?<=\n)|(?<=\r)(?!\n)")
+_TICKS_RE = re.compile(r"`+")
+_MENTION_RE = re.compile(r"(?<![A-Za-z0-9`/@])@(?=[A-Za-z0-9])")
 
 
 @dataclass(frozen=True)
@@ -137,13 +143,83 @@ def initial_state(detection: Detection) -> IssueState:
     )
 
 
-def _escape(text: str) -> str:
-    """Neutralizes HTML so untrusted text cannot open comments or tags."""
-    return text.replace("<", "&lt;")
+def _inert(text: str) -> str:
+    # GitHub decodes character references such as &#64; before it looks for
+    # mentions, so & is escaped first.
+    text = text.replace("&", "&amp;")
+    return _MENTION_RE.sub("@&#8203;", text).replace("![", "!\\[")
+
+
+def _spans(text: str) -> str:
+    # A run of backticks opens a code span only when the same run closes it.
+    out, start, pos = [], 0, 0
+    while (run := _TICKS_RE.search(text, pos)) is not None:
+        close = next(
+            (
+                c
+                for c in _TICKS_RE.finditer(text, run.end())
+                if c.group() == run.group()
+            ),
+            None,
+        )
+        if close is None:
+            pos = run.end()
+            continue
+        out += [_inert(text[start : run.start()]), text[run.start() : close.end()]]
+        start = pos = close.end()
+    out.append(_inert(text[start:]))
+    return "".join(out)
+
+
+def _lines(text: str) -> list[str]:
+    return [line for line in _LINE_RE.split(text) if line]
+
+
+def _by_line(text: str) -> str:
+    # A code span never crosses a line: CommonMark lets one continue within
+    # a paragraph, but a list item or heading line ends the paragraph.
+    return "".join(_spans(line) for line in _lines(text))
+
+
+def escape_text(text: str, *, inline: bool = False) -> str:
+    """Neutralizes untrusted text for an issue body.
+
+    Outside code, `&` is escaped so character references such as `&#64;`
+    stay literal, mentions become inert with a zero-width space, and images
+    become plain text, so the text cannot notify users or load remote
+    images. Everywhere, including code, `<` is escaped so the text cannot
+    open comments or tags.
+
+    Code is recognized more narrowly than CommonMark does: a code span stays
+    on one line, a fence opens only at the start of a line, and only \\r\\n,
+    \\r, and \\n end a line. Text that GitHub renders as code but this misses
+    only shows the inserted characters, while the reverse would leave a
+    mention live. inline is for table cells and one-line items, where fences
+    do not exist.
+    """
+    if inline:
+        return _by_line(text).replace("<", "&lt;")
+    out, prose, fence = [], [], None
+    for line in _lines(text):
+        body = line.rstrip("\r\n")
+        if fence is None:
+            match = _FENCE_RE.fullmatch(body)
+            if match is None or (match[1][0] == "`" and "`" in match[2]):
+                prose.append(line)
+                continue
+            out.append(_by_line("".join(prose)))
+            prose, fence = [], match[1]
+        elif re.fullmatch(
+            rf" {{0,3}}{re.escape(fence[0])}{{{len(fence)},}}[ \t]*", body
+        ):
+            fence = None
+        out.append(line)
+    out.append(_by_line("".join(prose)))
+    return "".join(out).replace("<", "&lt;")
 
 
 def _cell(text: str) -> str:
-    return _escape(" ".join(text.split())).replace("|", "\\|")
+    return escape_text(" ".join(text.split()), inline=True).replace("|", "\\|")
 
 
 def _table(detection: Detection) -> str:
@@ -166,7 +242,7 @@ def _table(detection: Detection) -> str:
 def _sections(sections: Sections) -> str:
     texts = (sections.summary, sections.why, sections.risk)
     return "\n\n".join(
-        f"## {heading}\n\n{_escape(text.strip())}"
+        f"## {heading}\n\n{escape_text(text.strip())}"
         for heading, text in zip(_SECTION_HEADINGS, texts, strict=True)
     )
 
@@ -195,7 +271,7 @@ def issue_body(
     head.append(_DETAILS_OPEN)
     prefix = "\n\n".join(head) + "\n\n"
     inner = "\n\n".join(
-        f"### {_escape(heading)}\n\n{_escape(text)}"
+        f"### {escape_text(heading, inline=True)}\n\n{escape_text(text)}"
         for heading, text in detection.details
     )
     note = f"{FALLBACK_NOTE}\n\n" if fallback else ""
