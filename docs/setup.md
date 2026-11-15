@@ -211,7 +211,7 @@ Without a model, the issues and the weekly report hold only what the scans retur
 3. Set the model ID:
 
    ```sh
-   gh variable set BEDROCK_MODEL_ID --repo example-org/security-findings --body global.anthropic.claude-sonnet-5-5
+   gh variable set BEDROCK_MODEL_ID --repo example-org/security-findings --body global.openai.gpt-6.1-terra
    ```
 
 4. Optionally, choose the language the model writes in. The default is `en_US`:
@@ -226,7 +226,7 @@ Without a model, the issues and the weekly report hold only what the scans retur
    gh api -X PUT repos/example-org/security-findings/actions/permissions/artifact-and-log-retention -F days=400
    ```
 
-The example workflows pass `BEDROCK_MODEL_ID` and `LANGUAGE` to the actions. The value of `LANGUAGE` is a locale such as `ja`, `ja_JP`, or `zh_TW`; any other form fails the job before the model is called. `global.anthropic.claude-sonnet-5-5` is the recommended model. The page source of the visual report needs a long output, so a model with a small output limit fails on it. The next sync adds the sections to open issues that lack them.
+The example workflows pass `BEDROCK_MODEL_ID` and `LANGUAGE` to the actions. The value of `LANGUAGE` is a locale such as `ja`, `ja_JP`, or `zh_TW`; any other form fails the job before the model is called. `global.openai.gpt-6.1-terra` is the recommended model. The safety filters of Claude Sonnet 5.5 and Opus 5.5 often stop requests about pentest findings with `content_filtered`, even without the attack script, while GPT-6.1 Terra writes them. The page source of the visual report needs a long output, so a model with a small output limit fails on it. The next sync adds the sections to open issues that lack them.
 
 When a model call fails after its retries, the job log shows a line such as `model_failed purpose=page reason=ValidationException`, with the error code and nothing from the findings. The issue or the report then ends with a note that names the part the model could not write.
 

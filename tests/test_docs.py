@@ -21,7 +21,7 @@ def test_setup_tells_upgraders_to_keep_japanese() -> None:
         assert "Japanese visual report" not in (ROOT / name).read_text()
 
 
-MODEL_ID = "global.anthropic.claude-sonnet-5-5"
+MODEL_ID = "global.openai.gpt-6.1-terra"
 
 
 def test_docs_recommend_the_global_inference_profile() -> None:

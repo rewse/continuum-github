@@ -9,7 +9,7 @@ inputs:
     description: AWS Region of the agent space.
     default: us-east-1
   bedrock-model-id:
-    description: Bedrock model or inference profile ID, such as global.anthropic.claude-sonnet-5-5, that writes the issue sections. Empty skips the model.
+    description: Bedrock model or inference profile ID, such as global.openai.gpt-6.1-terra, that writes the issue sections. Empty skips the model.
     default: ""
   bedrock-region:
     description: AWS Region that Bedrock is called in. Empty uses aws-region.

@@ -130,7 +130,7 @@ Both actions accept these inputs:
 |---|---|---|
 | `agent-space-id` | required | ID of the Security Agent space |
 | `aws-region` | `us-east-1` | Region of the Agent Space and the Continuum environments |
-| `bedrock-model-id` | empty | Bedrock model or inference profile ID, such as `global.anthropic.claude-sonnet-5-5`; empty turns the model off |
+| `bedrock-model-id` | empty | Bedrock model or inference profile ID, such as `global.openai.gpt-6.1-terra`; empty turns the model off |
 | `bedrock-region` | empty | Region that Bedrock is called in; empty uses `aws-region` |
 | `github-token` | `${{ github.token }}` | Token that reads and writes issues in the report repository; keep the default (see below) |
 | `language` | `en_US` | Locale, such as `ja_JP`, of the text the model writes; empty uses `en_US` |
