@@ -291,3 +291,9 @@ def test_code_review_labels_and_table_show_the_location() -> None:
     assert "| Type | code-review |" in body
     assert "| Location | src/a.py:10-12 |" in body
     assert "| Site |" not in body
+
+
+def test_fallback_note_says_it_stays_until_a_sync_succeeds() -> None:
+    assert FALLBACK_NOTE.endswith(
+        "Each later sync tries again, and this note stays until one succeeds._"
+    )

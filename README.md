@@ -156,7 +156,7 @@ A finding is filed once its result is settled:
 
 An issue is `urgent` when the finding is Critical, or High and confirmed by validation. Every code-vuln finding is confirmed, so all of its High findings are urgent. When the `mention` input is set, an urgent issue mentions it at the top, and an issue that becomes urgent later gets a comment with the mention.
 
-The `sync` action files an issue with the scan's details first. When `bedrock-model-id` is set, it then asks the model to add Summary, Why it matters, and Risk if left unresolved sections. The model gets every detail except a pentest's Attack script, because Bedrock's safety filter tends to block prompts that carry one. If the model fails after the retries, the issue keeps only the details and ends with a note saying so, and a later run tries again. Setting `bedrock-model-id` later adds the sections to open issues that lack them, and clearing it leaves written sections in place.
+The `sync` action files an issue with the scan's details first. When `bedrock-model-id` is set, it then asks the model to add Summary, Why it matters, and Risk if left unresolved sections. The model gets every detail except a pentest's Attack script, because Bedrock's safety filter tends to block prompts that carry one. If the model fails after the retries, the issue keeps only the details and ends with a note saying so, and each later run tries again until one succeeds. Setting `bedrock-model-id` later adds the sections to open issues that lack them, and clearing it leaves written sections in place.
 
 ### Issue body
 
@@ -227,7 +227,7 @@ The parameter reaches cursor.execute without passing through an allowlist...
 When the model is on but fails after the retries, the body has the same layout as without a model and adds this note before the state marker:
 
 ```markdown
-_Bedrock could not write the Summary, Why it matters, and Risk if left unresolved sections, so this issue shows the scanner's details only. A later sync tries again._
+_Bedrock could not write the Summary, Why it matters, and Risk if left unresolved sections, so this issue shows the scanner's details only. Each later sync tries again, and this note stays until one succeeds._
 ```
 
 The rows of the table depend on the scan: a pentest issue has Site instead of Location, and a code-vuln issue has neither. The headings inside the details also come from the scan, such as Attack script for a pentest or Synopsis and Severity reasoning for code-vuln.

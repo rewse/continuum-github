@@ -26,7 +26,7 @@ REVALIDATION_FAILED = "Revalidation did not complete."
 FALLBACK_NOTE = (
     "_Bedrock could not write the Summary, Why it matters, and Risk if left "
     "unresolved sections, so this issue shows the scanner's details only. "
-    "A later sync tries again._"
+    "Each later sync tries again, and this note stays until one succeeds._"
 )
 
 _MAX_BODY = 65536
