@@ -280,7 +280,7 @@ Sync reads state only from issues that `github-actions[bot]` created, and ignore
 
 The `report` action posts an issue titled `Continuum weekly report YYYY-Www` with the label `weekly-report`. The body counts open, new, and closed findings per severity and per repository, names the scans that did not complete, and lists the open findings and the findings closed that week in collapsed sections. A list that does not fit in the body continues in comments. Findings closed as not planned by the owner or as duplicates do not count as closed.
 
-When `bedrock-model-id` is set, the model also summarizes each severity that has open findings and writes a visual report as a single HTML file, which the action uploads as an artifact kept for 400 days and links from the issue. A part the model fails to write after the retries is left out, and the body ends with a note that names it. Without a model, the report has neither part and no note. Posting a report closes the previous week's report, and a rerun in the same week rewrites that week's report.
+When `bedrock-model-id` is set, the model also summarizes each severity that has open findings and writes a visual report as a single HTML file, which the action uploads as an artifact kept for 400 days and links from the issue. The page carries a Content Security Policy that runs only the script of the visual-explainer kit and loads nothing from outside the file, and a page that does not use the kit counts as a render failure. A part the model fails to write after the retries is left out, and the body ends with a note that names it. Without a model, the report has neither part and no note. Posting a report closes the previous week's report, and a rerun in the same week rewrites that week's report.
 
 ## Code reviews
 
