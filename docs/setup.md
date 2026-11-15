@@ -228,7 +228,7 @@ Without a model, the issues and the weekly report hold only what the scans retur
 
 The example workflows pass `BEDROCK_MODEL_ID` and `LANGUAGE` to the actions. The value of `LANGUAGE` is a locale such as `ja`, `ja_JP`, or `zh_TW`; any other form fails the job before the model is called. `global.openai.gpt-6.1-terra` is the recommended model. The safety filters of Claude Sonnet 5.5 and Opus 5.5 often stop requests about pentest findings with `content_filtered`, even without the attack script, while GPT-6.1 Terra writes them. The page source of the visual report needs a long output, so a model with a small output limit fails on it. The next sync adds the sections to open issues that lack them.
 
-When a model call fails after its retries, the job log shows a line such as `model_failed purpose=page reason=ValidationException`, with the error code and nothing from the findings. The issue or the report then ends with a note that names the part the model could not write.
+When a model call fails after its retries, the job log shows a line such as `model_failed purpose=page reason=ValidationException`, with the error code and nothing from the findings. The issue or the report then ends with a note that names the part the model could not write, followed by the same reason in parentheses, such as ``Visual report (`render_failed`)`` when no page source rendered.
 
 ## Changing the targets
 

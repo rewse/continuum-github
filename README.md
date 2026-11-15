@@ -224,10 +224,10 @@ The parameter reaches cursor.execute without passing through an allowlist...
 <!-- continuum-state: {"finding_ids":["0f3c9a6e-..."],...} -->
 ```
 
-When the model is on but fails after the retries, the body has the same layout as without a model and adds this note before the state marker:
+When the model is on but fails after the retries, the body has the same layout as without a model and adds this note before the state marker. The word in parentheses is the reason, the same one the job log shows, such as `content_filtered` when the model's safety filter stops the answer:
 
 ```markdown
-_Bedrock could not write the Summary, Why it matters, and Risk if left unresolved sections, so this issue shows the scanner's details only. Each later sync tries again, and this note stays until one succeeds._
+_Bedrock could not write the Summary, Why it matters, and Risk if left unresolved sections (`content_filtered`), so this issue shows the scanner's details only. Each later sync tries again, and this note stays until one succeeds._
 ```
 
 The rows of the table depend on the scan: a pentest issue has Site instead of Location, and a code-vuln issue has neither. The headings inside the details also come from the scan, such as Attack script for a pentest or Synopsis and Severity reasoning for code-vuln.
