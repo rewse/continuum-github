@@ -180,6 +180,8 @@ git commit -m "fix: read an HTTP-date Retry-After and wait at least a second"
 
 ### Task 3: 検証とマージ
 
+> Task 4 を先に実行する。Task 3 は Task 4 のあとに実行する。
+
 **Files:**
 - Move: `docs/superpowers/specs/2026-11-15-review-minors-design.md` → `docs/superpowers/archive/specs/`
 - Move: `docs/superpowers/plans/2026-11-15-review-minors.md` → `docs/superpowers/archive/plans/`
@@ -207,3 +209,58 @@ git commit -m "Merge branch 'fix/review-minors'"
 
 Run: `uv run pytest -q`
 Expected: 全件 PASS。push はしない。
+
+### Task 4: 行をまたいで対になるバッククォート
+
+全体レビューの指摘で spec に 5 を足した。Task 3 より先に実行する。
+
+**Files:**
+- Modify: `src/continuum_github/render.py`（`_by_line`、`escape_text`）
+- Test: `tests/test_render.py`
+
+**Interfaces:**
+- Consumes: なし
+- Produces: `escape_text` のシグネチャは変わらない。新しい非公開関数 `_self_paired(line: str) -> bool` は、行の中のすべてのバッククォートの列が同じ行の中で同じ長さの列と対になり、どの列の直前にも `\` がないときに True を返す。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`test_escape_text_neutralizes_mentions_and_images_outside_code` のパラメーターに足す。
+
+```python
+("`x\n`@b` y", "`x\n`@&#8203;b` y"),
+("`x\n`![i](u)` y", "`x\n`!\\[i](u)` y"),
+("\\`@b`", "\\`@&#8203;b`"),
+("`@a`\n\n`x\n`@b`", "`@a`\n\n`x\n`@&#8203;b`"),
+("```\n`x\n```\n`@b`", "```\n`x\n```\n`@b`"),
+("x/@alice", "x/@&#8203;alice"),
+("a_@b", "a_@&#8203;b"),
+```
+
+`test_escape_text_inline_has_no_fences` に足す。
+
+```python
+assert escape_text("`x `@b`", inline=True) == "`x `@&#8203;b`"
+```
+
+- [ ] **Step 2: 失敗を確かめる**
+
+Run: `uv run pytest -q tests/test_render.py`
+Expected: 新しいパラメーターのうち、フェンスの中の `` `x `` のケース以外がすべて FAIL し、inline のテストも FAIL する。
+
+- [ ] **Step 3: 実装する**
+
+`_MENTION_RE` を `re.compile(r"(?<![A-Za-z0-9])@(?=[A-Za-z0-9])")` にする。`_self_paired` を足す。`_by_line(text)` は、空行（`_LINE_RE` で分けた行のうち空白だけのもの）で区切った段落ごとに、すべての行が `_self_paired` なら今までどおり行ごとに `_spans` を通し、そうでなければ段落全体を `_inert` に通す。docstring とコメントを spec の 5 に合わせて直す。
+
+`` "`x `@b`" `` の inline のケースでは、行の中で 3 つの列のうち 1 つが対にならないので、テキスト全体が `_inert` を通る。
+
+- [ ] **Step 4: 通ることを確かめる**
+
+Run: `uv run pytest -q`
+Expected: 全件 PASS
+
+- [ ] **Step 5: コミットする**
+
+```bash
+git add src/continuum_github/render.py tests/test_render.py docs/superpowers/specs/2026-11-15-review-minors-design.md docs/superpowers/plans/2026-11-15-review-minors.md
+git commit -m "fix: treat a paragraph as prose when its backticks pair across lines"
+```

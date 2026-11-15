@@ -42,7 +42,7 @@ _FENCE_RE = re.compile(r"(`{3,}|~{3,})(.*)")
 # separators such as \x1c and \u2028 that CommonMark keeps inside a line.
 _LINE_RE = re.compile(r"(?<=\n)|(?<=\r)(?!\n)")
 _TICKS_RE = re.compile(r"`+")
-_MENTION_RE = re.compile(r"(?<![A-Za-z0-9`/@])@(?=[A-Za-z0-9])")
+_MENTION_RE = re.compile(r"(?<![A-Za-z0-9])@(?=[A-Za-z0-9])")
 
 
 @dataclass(frozen=True)
@@ -175,10 +175,50 @@ def _lines(text: str) -> list[str]:
     return [line for line in _LINE_RE.split(text) if line]
 
 
-def _by_line(text: str) -> str:
-    # A code span never crosses a line: CommonMark lets one continue within
-    # a paragraph, but a list item or heading line ends the paragraph.
-    return "".join(_spans(line) for line in _lines(text))
+def _self_paired(line: str) -> bool:
+    """Returns whether every backtick run in line pairs within line.
+
+    A run right after a backslash also counts as unpaired, since CommonMark
+    makes an escaped backtick outside code a plain character.
+    """
+    pos = 0
+    while (run := _TICKS_RE.search(line, pos)) is not None:
+        if run.start() > 0 and line[run.start() - 1] == "\\":
+            return False
+        close = next(
+            (
+                c
+                for c in _TICKS_RE.finditer(line, run.end())
+                if c.group() == run.group()
+            ),
+            None,
+        )
+        if close is None:
+            return False
+        pos = close.end()
+    return True
+
+
+def _paragraph(lines: list[str]) -> str:
+    # CommonMark pairs backtick runs across the lines of a paragraph. When
+    # every run pairs within its own line, it makes the same pairs, so code
+    # spans stay on one line; otherwise the whole paragraph is prose.
+    if all(_self_paired(line) for line in lines):
+        return "".join(_spans(line) for line in lines)
+    return _inert("".join(lines))
+
+
+def _by_paragraph(text: str) -> str:
+    out: list[str] = []
+    paragraph: list[str] = []
+    for line in _lines(text):
+        if line.strip():
+            paragraph.append(line)
+            continue
+        out += [_paragraph(paragraph), line]
+        paragraph = []
+    out.append(_paragraph(paragraph))
+    return "".join(out)
 
 
 def escape_text(text: str, *, inline: bool = False) -> str:
@@ -190,15 +230,16 @@ def escape_text(text: str, *, inline: bool = False) -> str:
     images. Everywhere, including code, `<` is escaped so the text cannot
     open comments or tags.
 
-    Code is recognized more narrowly than CommonMark does: a code span stays
-    on one line, a fence opens only at the start of a line, and only \\r\\n,
-    \\r, and \\n end a line. Text that GitHub renders as code but this misses
-    only shows the inserted characters, while the reverse would leave a
-    mention live. inline is for table cells and one-line items, where fences
-    do not exist.
+    Code is recognized more narrowly than CommonMark does: a code span is
+    kept only on one line, in a paragraph whose every backtick run pairs
+    within its own line; a fence opens only at the start of a line; and only
+    \\r\\n, \\r, and \\n end a line. Text that GitHub renders as code but this
+    misses only shows the inserted characters, while the reverse would
+    leave a mention live. inline is for table cells and one-line items,
+    where fences do not exist; the whole text is one paragraph.
     """
     if inline:
-        return _by_line(text).replace("<", "&lt;")
+        return _paragraph(_lines(text)).replace("<", "&lt;")
     out, prose, fence = [], [], None
     for line in _lines(text):
         body = line.rstrip("\r\n")
@@ -207,14 +248,14 @@ def escape_text(text: str, *, inline: bool = False) -> str:
             if match is None or (match[1][0] == "`" and "`" in match[2]):
                 prose.append(line)
                 continue
-            out.append(_by_line("".join(prose)))
+            out.append(_by_paragraph("".join(prose)))
             prose, fence = [], match[1]
         elif re.fullmatch(
             rf" {{0,3}}{re.escape(fence[0])}{{{len(fence)},}}[ \t]*", body
         ):
             fence = None
         out.append(line)
-    out.append(_by_line("".join(prose)))
+    out.append(_by_paragraph("".join(prose)))
     return "".join(out).replace("<", "&lt;")
 
 
