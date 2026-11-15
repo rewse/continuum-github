@@ -278,15 +278,28 @@ def issue_body(
     suffix = f"\n\n{_DETAILS_CLOSE}\n\n{note}{render_state(state)}\n"
     if len(prefix) + len(inner) + len(suffix) > _MAX_BODY:
         room = max(0, _MAX_BODY - len(prefix) - len(suffix) - len(_TRUNCATED))
-        inner = inner[:room] + _TRUNCATED
+        inner = _cut_at_line(inner, room) + _TRUNCATED
     return prefix + inner + suffix
+
+
+def _cut_at_line(text: str, room: int) -> str:
+    """Returns text[:room] cut back to its last line break, or "" without one.
+
+    Escaped text keeps code spans on one line, so cutting at a line break
+    never drops the closing backticks of a span whose mentions were left
+    as they are.
+    """
+    cut = text[:room]
+    end = max(cut.rfind("\n"), cut.rfind("\r"))
+    return cut[: end + 1]
 
 
 def fit_body(body: str, limit: int = _MAX_BODY) -> str:
     """Returns body cut to limit characters by shortening the details text.
 
-    The details text is cut from its end and marked as truncated once, so
-    the closing tag and the state marker after it survive.
+    The details text is cut back to a line break before its end and marked
+    as truncated once, so no code span loses its closing backticks and the
+    closing tag and the state marker after it survive.
 
     Raises:
         ValueError: body is too long and has no details block that can
@@ -307,7 +320,7 @@ def fit_body(body: str, limit: int = _MAX_BODY) -> str:
     room = limit - (len(body) - len(region)) - len(_TRUNCATED)
     if room < 0:
         raise ValueError("body exceeds the limit even without details")
-    return body[:start] + inner[:room] + _TRUNCATED + body[end:]
+    return body[:start] + _cut_at_line(inner, room) + _TRUNCATED + body[end:]
 
 
 def extract_section(body: str, heading: str) -> str | None:

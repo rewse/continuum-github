@@ -372,3 +372,32 @@ def test_body_neutralizes_a_mention_in_a_multiline_cell() -> None:
     odd = replace(CODE_MEDIUM, repository="```\n@alice")
     body = issue_body(odd, initial_state(odd), None, "")
     assert "| Repository | ``` @&#8203;alice |" in body
+
+
+def test_body_truncation_never_splits_a_code_span() -> None:
+    long_span = "`@alice " + "x" * 70000 + "`"
+    for text in (long_span, "keep @bob\n" + long_span):
+        huge = replace(PENTEST_HIGH, details=(("Description", text),))
+        body = issue_body(huge, initial_state(huge), None, "")
+        assert len(body) <= 65536
+        assert "@alice" not in body
+        assert "… (truncated)" in body
+        assert parse_state(body) == initial_state(huge)
+    body = issue_body(
+        replace(PENTEST_HIGH, details=(("Description", "keep @bob\n" + long_span),)),
+        initial_state(PENTEST_HIGH),
+        None,
+        "",
+    )
+    assert "keep @&#8203;bob\n… (truncated)" in body
+
+
+def test_fit_body_never_splits_a_code_span() -> None:
+    text = "a\n`@alice " + "x" * 100 + "`"
+    odd = replace(PENTEST_HIGH, details=(("Description", text),))
+    body = issue_body(odd, initial_state(odd), None, "")
+    fitted = fit_body(body, limit=len(body) - 50)
+    assert len(fitted) <= len(body) - 50
+    assert "@alice" not in fitted
+    assert "a\n… (truncated)" in fitted
+    assert parse_state(fitted) == initial_state(odd)
