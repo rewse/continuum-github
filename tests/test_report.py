@@ -1,6 +1,10 @@
 """Tests for the weekly report."""
 
+import base64
+import hashlib
 import json
+import re
+import shutil
 import subprocess
 from contextlib import contextmanager
 from dataclasses import replace
@@ -23,6 +27,7 @@ from continuum_github.models import Severity
 from continuum_github.models import TargetScan
 from continuum_github.records import BOT
 from continuum_github.records import Record
+from continuum_github.report import add_content_security_policy
 from continuum_github.report import build_visual_report
 from continuum_github.report import build_weekly
 from continuum_github.report import color_unstyled_svg_text
@@ -118,16 +123,74 @@ _SKILL_FILES = (
     "references/diagrams.md",
     "references/style-guide.md",
 )
+_KIT_FILES = {
+    "kit/ask.js": "const ask = 1;\n",
+    "kit/kit.js": 'document.body.dataset.end = "</script>";\n',
+    "kit/reply.js": "const reply = 1;\n",
+}
+_REAL_SKILL_DIR = (
+    Path(__file__).parent.parent
+    / "node_modules/visual-explainer/plugins/visual-explainer"
+)
 
 
 @pytest.fixture(autouse=True, scope="module")
 def _skill_dir(tmp_path_factory: pytest.TempPathFactory) -> None:
-    """Points SKILL_DIR at a skill folder with empty reference files."""
+    """Points SKILL_DIR at a skill folder with empty reference files and kit scripts."""
     global SKILL_DIR
     SKILL_DIR = tmp_path_factory.mktemp("skill")
     for name in _SKILL_FILES:
         (SKILL_DIR / name).parent.mkdir(parents=True, exist_ok=True)
         (SKILL_DIR / name).write_text("")
+    for name, text in _KIT_FILES.items():
+        (SKILL_DIR / name).parent.mkdir(parents=True, exist_ok=True)
+        (SKILL_DIR / name).write_text(text)
+
+
+def _kit_script(*names: str) -> str:
+    """Returns the kit's script element as kit/render.mjs inlines it."""
+    js = "\n".join((SKILL_DIR / "kit" / name).read_text() for name in names)
+    return "<script data-ve-kit>\n" + js.replace("</script", "<\\/script") + "</script>"
+
+
+def _kit_page(head: str = "", body: str = "", script: str | None = None) -> str:
+    """Returns a rendered kit page with head and body around the kit script."""
+    if script is None:
+        script = _kit_script("reply.js", "kit.js")
+    return (
+        f"<!doctype html>\n<html><head>{head}</head><body>{body}{script}</body></html>"
+    )
+
+
+def _script_hash(element: str) -> str:
+    text = element.removeprefix("<script data-ve-kit>").removesuffix("</script>")
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    return "sha256-" + base64.b64encode(digest).decode("ascii")
+
+
+def _csp(*elements: str) -> str:
+    sources = " ".join(f"'{_script_hash(element)}'" for element in elements)
+    return (
+        f"default-src 'none'; script-src {sources}; style-src 'unsafe-inline'; "
+        "img-src data:; font-src data:; base-uri 'none'; form-action 'none'"
+    )
+
+
+def _csp_meta(*elements: str) -> str:
+    return (
+        f'<meta http-equiv="Content-Security-Policy" content="{_csp(*elements)}">'
+        '<meta charset="utf-8">'
+    )
+
+
+def _writes(html: str):
+    """Returns a runner that renders every source to html."""
+
+    def runner(args, **kwargs):
+        Path(args[args.index("-o") + 1]).write_text(html)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    return runner
 
 
 def test_weekly_title_uses_the_iso_week() -> None:
@@ -675,14 +738,22 @@ def test_build_visual_report_retries_once_with_render_errors(tmp_path) -> None:
                 args, 1, stdout="", stderr="line 3 <ve-bar>: bad"
             )
         Path(args[args.index("-o") + 1]).write_text(
-            '<link href="https://fonts.googleapis.com/x" rel="stylesheet"><p>ok</p>'
+            _kit_page(
+                '<link href="https://fonts.googleapis.com/x" rel="stylesheet">',
+                "<p>ok</p>",
+            )
         )
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
     model = RecordingModel(["<html>1</html>", "<html>2</html>"])
     out = tmp_path / "report.html"
     assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is None
-    assert out.read_text() == "<p>ok</p>"
+    script = _kit_script("reply.js", "kit.js")
+    assert out.read_text() == (
+        f'<!doctype html>\n<html lang="en-US"><head>{_csp_meta(script)}'
+        f"<style>:where(svg text:not([class]):not([fill])) "
+        f"{{ fill: var(--text); }}</style></head><body><p>ok</p>{script}</body></html>"
+    )
     assert "line 3 <ve-bar>: bad" in model.prompts[1]
     assert (
         calls[0][:2] == ["node", str(SKILL_DIR / "kit" / "render.mjs")]
@@ -815,12 +886,9 @@ def test_color_unstyled_svg_text_leaves_a_page_without_head_unchanged() -> None:
 
 
 def test_build_visual_report_colors_unstyled_svg_text(tmp_path) -> None:
-    def runner(args, **kwargs):
-        Path(args[args.index("-o") + 1]).write_text("<head></head><svg></svg>")
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
     out = tmp_path / "report.html"
     model = RecordingModel(["<html>1</html>"])
+    runner = _writes(_kit_page(body="<svg></svg>"))
     assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is None
     assert "fill: var(--text)" in out.read_text()
     assert "class from the kit" in model.prompts[0]
@@ -875,17 +943,11 @@ def test_set_html_lang_adds_or_replaces_the_attribute() -> None:
 
 
 def test_build_visual_report_sets_the_page_language(tmp_path) -> None:
-    def runner(args, **kwargs):
-        Path(args[args.index("-o") + 1]).write_text(
-            "<html><head></head><body></body></html>"
-        )
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
     out = tmp_path / "report.html"
     model = RecordingModel(["<html>1</html>"])
     assert (
         build_visual_report(
-            model, DATA, SKILL_DIR, out, runner=runner, language="ja_JP"
+            model, DATA, SKILL_DIR, out, runner=_writes(_kit_page()), language="ja_JP"
         )
         is None
     )
@@ -895,3 +957,104 @@ def test_build_visual_report_sets_the_page_language(tmp_path) -> None:
 def test_unavailable_parts_names_the_visual_report() -> None:
     parts = unavailable_parts(TWO_SEVERITIES, {}, {}, "render_failed")
     assert parts[-1] == "Visual report (`render_failed`)"
+
+
+def test_build_visual_report_runs_only_the_kit_script(tmp_path) -> None:
+    head = (
+        '<meta http-equiv="refresh" content="0; url=https://example.com/a">'
+        '<meta http-equiv="Content-Security-Policy" content="script-src *">'
+    )
+    body = (
+        '<script>fetch("https://example.com/b")</script>'
+        '<img src="https://example.com/c.png" onerror="alert(1)">'
+        '<iframe src="https://example.com/d"></iframe>'
+    )
+    out = tmp_path / "report.html"
+    model = RecordingModel(["<html>1</html>"])
+    runner = _writes(_kit_page(head, body))
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is None
+    html = out.read_text()
+    script = _kit_script("reply.js", "kit.js")
+    assert html.startswith(
+        f'<!doctype html>\n<html lang="en-US"><head>{_csp_meta(script)}'
+    )
+    assert html.count("Content-Security-Policy") == 1
+    assert "refresh" not in html
+    assert re.findall(r"'sha256-[^']*'", html) == [f"'{_script_hash(script)}'"]
+    assert body + script in html
+
+
+def test_build_visual_report_hashes_the_ask_script(tmp_path) -> None:
+    out = tmp_path / "report.html"
+    script = _kit_script("reply.js", "ask.js", "kit.js")
+    runner = _writes(_kit_page(script=script))
+    model = RecordingModel(["<html>1</html>"])
+    assert build_visual_report(model, DATA, SKILL_DIR, out, runner=runner) is None
+    assert _csp_meta(script) in out.read_text()
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        "<html><head></head><body><p>as given</p></body></html>",
+        _kit_page(script="<script data-ve-kit>alert(1)</script>"),
+    ],
+)
+def test_build_visual_report_rejects_a_page_without_the_kit(tmp_path, page) -> None:
+    out = tmp_path / "report.html"
+    model = RecordingModel(["<html>1</html>", "<html>2</html>"])
+    assert (
+        build_visual_report(model, DATA, SKILL_DIR, out, runner=_writes(page))
+        == "render_failed"
+    )
+    assert not out.exists()
+    assert "data-ve-kit" in model.prompts[1]
+
+
+@pytest.mark.parametrize(
+    "meta",
+    [
+        '<META HTTP-EQUIV="Refresh" CONTENT="0">',
+        '<meta content="0; url=https://example.com/?a>b" http-equiv="refresh">',
+        "<meta http-equiv=&#114;efresh content=0>",
+        '<meta/http-equiv="refresh"/content="0">',
+        '<meta http-equiv=" content-security-policy " content="img-src *"/>',
+    ],
+)
+def test_add_content_security_policy_drops_refresh_and_csp_meta(meta) -> None:
+    script = _kit_script("reply.js", "kit.js")
+    html = add_content_security_policy(_kit_page(meta), SKILL_DIR)
+    assert html == f"<!doctype html>\n<html><head>{_csp_meta(script)}</head>" + (
+        f"<body>{script}</body></html>"
+    )
+
+
+def test_add_content_security_policy_goes_before_anything_else_in_the_head() -> None:
+    script = _kit_script("reply.js", "kit.js")
+    page = f"<!--<head>--><script>alert(1)</script><head></head>{script}"
+    assert add_content_security_policy(page, SKILL_DIR) == _csp_meta(script) + page
+
+
+def test_add_content_security_policy_needs_the_kit_files(tmp_path) -> None:
+    assert add_content_security_policy(_kit_page(), tmp_path) is None
+
+
+@pytest.mark.skipif(
+    shutil.which("node") is None or not (_REAL_SKILL_DIR / "kit").is_dir(),
+    reason="needs node and npm ci",
+)
+def test_build_visual_report_matches_the_vendored_kit(tmp_path) -> None:
+    source = (
+        "<!doctype html>\n<html><head><title>t</title>"
+        '<link rel="stylesheet" href="kit.css" data-ve-kit></head>'
+        "<body><main><p>ok</p><script>alert(1)</script></main></body></html>"
+    )
+    out = tmp_path / "report.html"
+    model = RecordingModel([source])
+    assert build_visual_report(model, DATA, _REAL_SKILL_DIR, out) is None
+    html = out.read_text()
+    scripts = re.findall(r"<script data-ve-kit>.*?</script>", html, re.DOTALL)
+    assert len(scripts) == 1
+    assert html.startswith(
+        f'<!doctype html>\n<html lang="en-US"><head>{_csp_meta(scripts[0])}\n'
+    )
