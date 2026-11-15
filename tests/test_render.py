@@ -320,6 +320,15 @@ def test_fallback_note_says_it_stays_until_a_sync_succeeds() -> None:
         ("`x\r\n\r\n@v\r\n\r\n`y", "`x\r\n\r\n@&#8203;v\r\n\r\n`y"),
         ("```a`b\n@v\n```", "```a`b\n@&#8203;v\n```"),
         ("`<b>` <!-- x -->", "`&lt;b>` &lt;!-- x -->"),
+        (
+            "&#64;alice &#x40;bob &commat;carol",
+            "&amp;#64;alice &amp;#x40;bob &amp;commat;carol",
+        ),
+        ("a & b `&#64;c`", "a &amp; b `&#64;c`"),
+        ("`a\n- @alice\n`", "`a\n- @&#8203;alice\n`"),
+        ("- a\n\n  ```\n@alice\n  ```", "- a\n\n  ```\n@&#8203;alice\n  ```"),
+        ("hello \x1c```\n@alice\n```", "hello \x1c```\n@&#8203;alice\n```"),
+        ("```\r@a\r```\r@b", "```\r@a\r```\r@&#8203;b"),
     ],
 )
 def test_escape_text_neutralizes_mentions_and_images_outside_code(
@@ -331,6 +340,7 @@ def test_escape_text_neutralizes_mentions_and_images_outside_code(
 def test_escape_text_inline_has_no_fences() -> None:
     assert escape_text("``` @alice", inline=True) == "``` @&#8203;alice"
     assert escape_text("`@a` @b", inline=True) == "`@a` @&#8203;b"
+    assert escape_text("`x\n\n@v\n\n`", inline=True) == "`x\n\n@&#8203;v\n\n`"
 
 
 def test_body_neutralizes_mentions_and_images_but_keeps_the_mention() -> None:

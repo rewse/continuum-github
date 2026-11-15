@@ -37,8 +37,10 @@ _DETAILS_CLOSE = "</details>"
 _SECTION_HEADINGS = ("Summary", "Why it matters", "Risk if left unresolved")
 _TITLE_TAG_RE = re.compile(r"\A\[[A-Z]+\] ")
 _SEVERITY_ROW_RE = re.compile(r"^\| Severity \| [^|\n]* \|$", re.MULTILINE)
-_FENCE_RE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
-_BLANK_RE = re.compile(r"(\r?\n[ \t]*\r?\n)")
+_FENCE_RE = re.compile(r"(`{3,}|~{3,})(.*)")
+# Splits after \r\n, \r, or \n only; str.splitlines also splits on
+# separators such as \x1c and \u2028 that CommonMark keeps inside a line.
+_LINE_RE = re.compile(r"(?<=\n)|(?<=\r)(?!\n)")
 _TICKS_RE = re.compile(r"`+")
 _MENTION_RE = re.compile(r"(?<![A-Za-z0-9`/@])@(?=[A-Za-z0-9])")
 
@@ -142,6 +144,9 @@ def initial_state(detection: Detection) -> IssueState:
 
 
 def _inert(text: str) -> str:
+    # GitHub decodes character references such as &#64; before it looks for
+    # mentions, so & is escaped first.
+    text = text.replace("&", "&amp;")
     return _MENTION_RE.sub("@&#8203;", text).replace("![", "!\\[")
 
 
@@ -166,40 +171,50 @@ def _spans(text: str) -> str:
     return "".join(out)
 
 
-def _paragraphs(text: str) -> str:
-    # Code spans never cross a blank line.
-    return "".join(_spans(part) for part in _BLANK_RE.split(text))
+def _lines(text: str) -> list[str]:
+    return [line for line in _LINE_RE.split(text) if line]
+
+
+def _by_line(text: str) -> str:
+    # A code span never crosses a line: CommonMark lets one continue within
+    # a paragraph, but a list item or heading line ends the paragraph.
+    return "".join(_spans(line) for line in _lines(text))
 
 
 def escape_text(text: str, *, inline: bool = False) -> str:
     """Neutralizes untrusted text for an issue body.
 
-    Outside code, mentions become inert with a zero-width space and images
+    Outside code, `&` is escaped so character references such as `&#64;`
+    stay literal, mentions become inert with a zero-width space, and images
     become plain text, so the text cannot notify users or load remote
     images. Everywhere, including code, `<` is escaped so the text cannot
-    open comments or tags. Code is recognized more narrowly than CommonMark
-    does: text that GitHub renders as code but this misses only shows the
-    inserted characters, while the reverse would leave a mention live.
-    inline is for table cells and one-line items, where fences do not exist.
+    open comments or tags.
+
+    Code is recognized more narrowly than CommonMark does: a code span stays
+    on one line, a fence opens only at the start of a line, and only \\r\\n,
+    \\r, and \\n end a line. Text that GitHub renders as code but this misses
+    only shows the inserted characters, while the reverse would leave a
+    mention live. inline is for table cells and one-line items, where fences
+    do not exist.
     """
     if inline:
-        return _spans(text).replace("<", "&lt;")
+        return _by_line(text).replace("<", "&lt;")
     out, prose, fence = [], [], None
-    for line in text.splitlines(keepends=True):
+    for line in _lines(text):
         body = line.rstrip("\r\n")
         if fence is None:
             match = _FENCE_RE.fullmatch(body)
             if match is None or (match[1][0] == "`" and "`" in match[2]):
                 prose.append(line)
                 continue
-            out.append(_paragraphs("".join(prose)))
+            out.append(_by_line("".join(prose)))
             prose, fence = [], match[1]
         elif re.fullmatch(
             rf" {{0,3}}{re.escape(fence[0])}{{{len(fence)},}}[ \t]*", body
         ):
             fence = None
         out.append(line)
-    out.append(_paragraphs("".join(prose)))
+    out.append(_by_line("".join(prose)))
     return "".join(out).replace("<", "&lt;")
 
 
