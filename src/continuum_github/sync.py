@@ -10,6 +10,7 @@ import httpx
 from botocore.exceptions import BotoCoreError
 from botocore.exceptions import ClientError
 
+from continuum_github.bedrock import Failure
 from continuum_github.bedrock import ModelLike
 from continuum_github.bedrock import finding_sections
 from continuum_github.codereview import StartResult
@@ -469,7 +470,7 @@ def fill_sections(
         if detection is None:
             continue
         sections = finding_sections(model, detection, language)
-        if sections is None:
+        if isinstance(sections, Failure):
             # Marks the issue once; a later run retries the sections.
             if FALLBACK_NOTE not in record.body:
                 github.update_issue(

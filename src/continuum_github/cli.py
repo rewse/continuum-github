@@ -140,7 +140,7 @@ def _build_report(
         scans = collect_scans(targets, pentest, code_vuln, code_review)
     data = build_weekly(records, scans, datetime.now(UTC))
     summaries = (
-        {} if model is None else severity_summaries(model, data, settings.language)
+        {} if model is None else severity_summaries(model, data, settings.language)[0]
     )
     return data, summaries
 

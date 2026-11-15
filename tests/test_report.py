@@ -470,7 +470,7 @@ def test_severity_summaries_asks_once_per_severity() -> None:
         NOW,
     )
     model = FakeModel(" Two findings. ")
-    assert severity_summaries(model, data) == {
+    assert severity_summaries(model, data)[0] == {
         Severity.HIGH: "Two findings.",
         Severity.MEDIUM: "Two findings.",
     }
@@ -485,9 +485,20 @@ def test_severity_summaries_asks_once_per_severity() -> None:
 
 def test_severity_summaries_drops_bad_answers() -> None:
     data = build_weekly([_rec(1, "severity:high")], [], NOW)
-    assert severity_summaries(FakeModel(None), data) == {}
-    assert severity_summaries(FakeModel("  "), data) == {}
-    assert severity_summaries(FakeModel("x" * 1501), data) == {}
+    assert severity_summaries(FakeModel(None), data)[0] == {}
+    assert severity_summaries(FakeModel("  "), data)[0] == {}
+    assert severity_summaries(FakeModel("x" * 1501), data)[0] == {}
+
+
+def test_severity_summaries_returns_the_failure_reasons() -> None:
+    data = build_weekly([_rec(1, "severity:high"), _rec(2, "severity:medium")], [], NOW)
+    model = RecordingModel([None, "  "], failures=["content_filtered", None])
+    summaries, failures = severity_summaries(model, data)
+    assert summaries == {}
+    assert failures == {
+        Severity.HIGH: "content_filtered",
+        Severity.MEDIUM: "invalid_answer",
+    }
 
 
 def test_cli_report_build_writes_files_and_prints_counts(

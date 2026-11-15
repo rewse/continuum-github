@@ -11,6 +11,7 @@ from fakes import FakeModel
 
 from continuum_github.bedrock import SYSTEM_PROMPT
 from continuum_github.bedrock import Bedrock
+from continuum_github.bedrock import Failure
 from continuum_github.bedrock import bedrock_client
 from continuum_github.bedrock import finding_sections
 from continuum_github.models import Detection
@@ -185,11 +186,13 @@ def test_finding_sections_parses_and_validates_json() -> None:
         '{"summary": "' + "a" * 1501 + '", "why": "W", "risk": "R"}',
         None,
     ):
-        assert finding_sections(FakeModel(answer), DETECTION) is None
+        assert isinstance(finding_sections(FakeModel(answer), DETECTION), Failure)
 
 
 def test_finding_sections_logs_an_invalid_answer(capsys) -> None:
-    assert finding_sections(FakeModel("not json"), DETECTION) is None
+    assert finding_sections(FakeModel("not json"), DETECTION) == Failure(
+        "invalid_answer"
+    )
     assert capsys.readouterr().err == (
         "model_failed purpose=sections reason=invalid_answer\n"
     )
@@ -234,3 +237,31 @@ def test_finding_sections_prompt_names_the_locale() -> None:
     (prompt,) = model.prompts
     assert "in the language of the locale ja_JP" in prompt
     assert "English" not in prompt
+
+
+def test_ask_records_the_last_failure_and_clears_it_on_success() -> None:
+    text = "<<<CONTINUUM-BEGIN>>>a<<<CONTINUUM-END>>>"
+    filtered = Bedrock(FakeClient(_response(text, "content_filtered")), "m1")
+    assert filtered.ask("p", "summary") is None
+    assert filtered.last_failure == "content_filtered"
+    filtered.client = FakeClient(_response(text))
+    assert filtered.ask("p", "summary") == "a"
+    assert filtered.last_failure is None
+    error = ClientError({"Error": {"Code": "ThrottlingException"}}, "Converse")
+    throttled = Bedrock(FakeClient(error=error), "m1")
+    throttled.ask("p", "summary")
+    assert throttled.last_failure == "ThrottlingException"
+    empty = {"output": {"message": {"content": []}}, "stopReason": "end_turn"}
+    no_text = Bedrock(FakeClient(empty), "m1")
+    no_text.ask("p", "summary")
+    assert no_text.last_failure == "no_text"
+
+
+def test_finding_sections_returns_the_failure_reason() -> None:
+    assert finding_sections(FakeModel(None, "content_filtered"), DETECTION) == Failure(
+        "content_filtered"
+    )
+    assert finding_sections(FakeModel("not json"), DETECTION) == Failure(
+        "invalid_answer"
+    )
+    assert finding_sections(FakeModel(None), DETECTION) == Failure("unknown")
