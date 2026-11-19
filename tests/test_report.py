@@ -247,6 +247,23 @@ def test_build_weekly_lists_incomplete_scans() -> None:
     )
 
 
+def test_build_weekly_applies_the_pentest_max_age_to_pentests_only() -> None:
+    scans = [
+        _ts("pentest", "monthly-a", "COMPLETED", NOW - timedelta(days=20)),
+        _ts("pentest", "monthly-b", "COMPLETED", NOW - timedelta(days=33)),
+        _ts("code-vuln", "actions", "COMPLETED", NOW - timedelta(days=9)),
+    ]
+    assert build_weekly([], scans, NOW).incomplete == (
+        "pentest: monthly-a (COMPLETED)",
+        "pentest: monthly-b (COMPLETED)",
+        "code-vuln: actions (COMPLETED)",
+    )
+    assert build_weekly([], scans, NOW, timedelta(days=32)).incomplete == (
+        "pentest: monthly-b (COMPLETED)",
+        "code-vuln: actions (COMPLETED)",
+    )
+
+
 def test_render_weekly_orders_sections_and_hides_empty_ones() -> None:
     body, comments = render_weekly(
         build_weekly([_rec(1, "severity:high")], [], NOW), {Severity.HIGH: "Two XSS."}

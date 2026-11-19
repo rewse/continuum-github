@@ -4,12 +4,17 @@ import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 
 DEFAULT_REGION = "us-east-1"
 DEFAULT_LANGUAGE = "en_US"
 # The language goes into model prompts, so only a bare locale is accepted.
 LANGUAGE_RE = re.compile(r"[a-z]{2,3}(_[A-Z]{2})?")
+# A weekly pentest plus a day for the job to finish.
+DEFAULT_PENTEST_MAX_AGE = timedelta(days=8)
+# Four digits keep now minus the age far from datetime.min.
+PENTEST_MAX_AGE_DAYS_RE = re.compile(r"[1-9][0-9]{0,3}")
 DEFAULT_VISUAL_EXPLAINER_DIR = Path(
     "node_modules/visual-explainer/plugins/visual-explainer"
 )
@@ -55,6 +60,7 @@ class Settings:
     mention: str
     visual_explainer_dir: Path
     language: str = DEFAULT_LANGUAGE
+    pentest_max_age: timedelta = DEFAULT_PENTEST_MAX_AGE
 
 
 def _language(env: Mapping[str, str]) -> str:
@@ -67,6 +73,20 @@ def _language(env: Mapping[str, str]) -> str:
     if not LANGUAGE_RE.fullmatch(value):
         raise ValueError("CONTINUUM_LANGUAGE must be a locale such as ja_JP")
     return value
+
+
+def _pentest_max_age(env: Mapping[str, str]) -> timedelta:
+    """Returns PENTEST_MAX_AGE_DAYS, or the default when it is unset or empty.
+
+    Raises:
+        ValueError: the value is not a whole number of days from 1 to 9999.
+    """
+    value = env.get("PENTEST_MAX_AGE_DAYS")
+    if not value:
+        return DEFAULT_PENTEST_MAX_AGE
+    if not PENTEST_MAX_AGE_DAYS_RE.fullmatch(value):
+        raise ValueError("PENTEST_MAX_AGE_DAYS must be a whole number from 1 to 9999")
+    return timedelta(days=int(value))
 
 
 def _repository(entry: Mapping[str, object]) -> Repository:
@@ -122,6 +142,7 @@ def load_settings(env: Mapping[str, str]) -> Settings:
             else DEFAULT_VISUAL_EXPLAINER_DIR
         ),
         language=_language(env),
+        pentest_max_age=_pentest_max_age(env),
     )
 
 

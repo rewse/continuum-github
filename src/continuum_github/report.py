@@ -15,6 +15,7 @@ from pathlib import Path
 from continuum_github.bedrock import ModelLike
 from continuum_github.bedrock import visual_report_source
 from continuum_github.config import DEFAULT_LANGUAGE
+from continuum_github.config import DEFAULT_PENTEST_MAX_AGE
 from continuum_github.models import Severity
 from continuum_github.models import TargetScan
 from continuum_github.records import BOT
@@ -161,14 +162,18 @@ def _order(item: ReportItem) -> tuple[int, int]:
     return (-item.severity.rank, item.number)
 
 
-def _incomplete(scans: Sequence[TargetScan], now: datetime) -> tuple[str, ...]:
-    stale = now - _STALE
+def _incomplete(
+    scans: Sequence[TargetScan], now: datetime, pentest_max_age: timedelta
+) -> tuple[str, ...]:
+    def stale(scan: TargetScan) -> datetime:
+        return now - (pentest_max_age if scan.source == "pentest" else _STALE)
+
     return tuple(
         f"{scan.source}: {scan.target} ({scan.latest_status})"
         for scan in scans
         if scan.latest_status in _INCOMPLETE_STATUSES
         or scan.completed_at is None
-        or scan.completed_at < stale
+        or scan.completed_at < stale(scan)
     )
 
 
@@ -188,13 +193,19 @@ def _closed_this_week(record: Record, week_start: datetime) -> bool:
 
 
 def build_weekly(
-    records: Sequence[Record], scans: Sequence[TargetScan], now: datetime
+    records: Sequence[Record],
+    scans: Sequence[TargetScan],
+    now: datetime,
+    pentest_max_age: timedelta = DEFAULT_PENTEST_MAX_AGE,
 ) -> WeeklyData:
     """Counts the finding issues and incomplete scans for the week ending at now.
 
     Issues merged into another are left out. An issue is new or closed this
     week when it was created or closed after now minus seven days. Issues
     the owner closed as not planned or as duplicate are not closed this week.
+    A scan is incomplete when its latest job failed, stopped, or is missing,
+    or when its last completion is older than eight days, or than
+    pentest_max_age for a pentest.
     """
     week_start = now - _WEEK
     live = [record for record in records if record.state.merged_into is None]
@@ -234,7 +245,7 @@ def build_weekly(
         title=weekly_title(now),
         counts=counts,
         repositories=ordered,
-        incomplete=_incomplete(scans, now),
+        incomplete=_incomplete(scans, now, pentest_max_age),
         open_items=tuple(open_items),
         closed_items=tuple(closed_items),
     )

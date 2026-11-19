@@ -1,5 +1,6 @@
 """Tests for loading scan targets and settings."""
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -76,6 +77,24 @@ def test_settings_read_the_mention() -> None:
     env = {"AGENT_SPACE_ID": "as-1", "GITHUB_TOKEN": "t", "REPORT_REPOSITORY": "o/r"}
     assert load_settings(env).mention == ""
     assert load_settings({**env, "MENTION": "@octocat"}).mention == "@octocat"
+
+
+def test_settings_read_the_pentest_max_age() -> None:
+    env = {"AGENT_SPACE_ID": "as-1", "GITHUB_TOKEN": "t", "REPORT_REPOSITORY": "o/r"}
+    assert load_settings(env).pentest_max_age == timedelta(days=8)
+    assert load_settings({**env, "PENTEST_MAX_AGE_DAYS": ""}).pentest_max_age == (
+        timedelta(days=8)
+    )
+    assert load_settings({**env, "PENTEST_MAX_AGE_DAYS": "32"}).pentest_max_age == (
+        timedelta(days=32)
+    )
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "1.5", "08", "10000", "thirty"])
+def test_settings_reject_a_bad_pentest_max_age(value: str) -> None:
+    env = {"AGENT_SPACE_ID": "as-1", "GITHUB_TOKEN": "t", "REPORT_REPOSITORY": "o/r"}
+    with pytest.raises(ValueError, match="PENTEST_MAX_AGE_DAYS"):
+        load_settings({**env, "PENTEST_MAX_AGE_DAYS": value})
 
 
 def test_sites_keep_the_file_order() -> None:

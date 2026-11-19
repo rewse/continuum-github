@@ -191,7 +191,7 @@ Copy [examples/workflows/sync.yml](../examples/workflows/sync.yml) and [examples
 uses: rewse/continuum-github/sync@<release commit SHA>  # v1.2.3
 ```
 
-Add a Dependabot configuration for the `github-actions` ecosystem, and Dependabot then keeps the SHA and its version comment current. Adjust the schedules if you like. `sync.yml` runs every two hours, and `report.yml` runs every Friday at 21:35 UTC. The role trusts only `main`, so both jobs run only there. If the Agent Space is not in `us-east-1`, set `aws-region` in both the AWS credentials step and the action to the Region you exported as `AWS_REGION`. Keep the default `github-token` and `report-repository` inputs, because sync recognizes only the issues that `github-actions[bot]` opened in the report repository.
+Add a Dependabot configuration for the `github-actions` ecosystem, and Dependabot then keeps the SHA and its version comment current. Adjust the schedules if you like. `sync.yml` runs every two hours, and `report.yml` runs every Friday at 21:35 UTC. The role trusts only `main`, so both jobs run only there. If the Agent Space is not in `us-east-1`, set `aws-region` in both the AWS credentials step and the action to the Region you exported as `AWS_REGION`. Keep the default `github-token` and `report-repository` inputs, because sync recognizes only the issues that `github-actions[bot]` opened in the report repository. If your pentest schedules run less often than weekly, set `pentest-max-age-days` in `report.yml` to a day or two longer than their interval, such as `32` for monthly pentests, or every report names the pentests as scans that did not complete.
 
 Commit `targets.toml` and the workflows to `main`, then run each workflow once by hand:
 

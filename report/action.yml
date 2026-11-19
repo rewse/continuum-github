@@ -23,6 +23,9 @@ inputs:
   mention:
     description: Mention added to urgent findings, such as a GitHub handle. Empty adds none.
     default: ""
+  pentest-max-age-days:
+    description: Days since a pentest last completed after which the report names it as a scan that did not complete. Set it a day or two longer than the interval of the pentest schedules.
+    default: "8"
   report-repository:
     description: Repository, as owner/name, that holds the finding issues. Keep the default; the actions read state only from issues that github-actions[bot] opened in the calling repository, so another repository makes sync file every finding again.
     default: ${{ github.repository }}
@@ -74,6 +77,7 @@ runs:
         CONTINUUM_LANGUAGE: ${{ inputs.language }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         MENTION: ${{ inputs.mention }}
+        PENTEST_MAX_AGE_DAYS: ${{ inputs.pentest-max-age-days }}
         REPORT_REPOSITORY: ${{ inputs.report-repository }}
         TARGETS: ${{ inputs.targets }}
 

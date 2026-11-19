@@ -138,6 +138,8 @@ Both actions accept these inputs:
 | `report-repository` | `${{ github.repository }}` | Repository, as `owner/name`, that holds the issues; keep the default (see below) |
 | `targets` | `targets.toml` | Path of the targets file in the checkout |
 
+The `report` action also accepts `pentest-max-age-days`, with a default of `8`, which [Weekly report](#weekly-report) describes.
+
 Only the defaults of `github-token` and `report-repository` are supported. The actions read their state back only from issues opened by `github-actions[bot]`, the author of issues created with `github.token`. With a personal access token, a GitHub App token, or another repository, sync does not recognize the issues it filed and files every finding again. Run the workflows in the report repository itself.
 
 The `report` action has the output `html-url`, the URL of the uploaded HTML report. It is empty when the model is off or could not write the report.
@@ -279,6 +281,8 @@ Sync reads state only from issues that `github-actions[bot]` created, and ignore
 ## Weekly report
 
 The `report` action posts an issue titled `Continuum weekly report YYYY-Www` with the label `weekly-report`. The body counts open, new, and closed findings per severity and per repository, names the scans that did not complete, and lists the open findings and the findings closed that week in collapsed sections. A list that does not fit in the body continues in comments. Findings closed as not planned by the owner or as duplicates do not count as closed.
+
+A scan did not complete when its latest job failed, stopped, or is missing, or when it last completed more than 8 days ago. For pentests, the `pentest-max-age-days` input sets that limit, because their schedules are yours. Keep the default for weekly pentests, and raise it to a day or two longer than the interval for less frequent ones, such as `32` for monthly pentests.
 
 When `bedrock-model-id` is set, the model also summarizes each severity that has open findings and writes a visual report as a single HTML file, which the action uploads as an artifact kept for 400 days and links from the issue. The page carries a Content Security Policy that runs only the script of the visual-explainer kit and loads nothing from outside the file, and a page that does not use the kit counts as a render failure. A part the model fails to write after the retries is left out, and the body ends with a note that names it. Without a model, the report has neither part and no note. Posting a report closes the previous week's report, and a rerun in the same week rewrites that week's report.
 

@@ -138,7 +138,7 @@ def _build_report(
     with _clients(settings) as (github, pentest, code_vuln, code_review):
         records = records_from_issues(github.issues())
         scans = collect_scans(targets, pentest, code_vuln, code_review)
-    data = build_weekly(records, scans, datetime.now(UTC))
+    data = build_weekly(records, scans, datetime.now(UTC), settings.pentest_max_age)
     if model is None:
         return data, {}, {}
     summaries, failures = severity_summaries(model, data, settings.language)
